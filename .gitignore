@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+*.db
+
+# Node
+node_modules/
+dist/
+
+# IDE
+.vscode/
+.idea/
+
+# Env
+.env
+*.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Session/cache
+*.json.bak
+insta_session.json
