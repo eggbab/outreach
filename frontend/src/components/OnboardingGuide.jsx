@@ -11,7 +11,7 @@ import { ArrowRight, X, CheckCircle, Sparkles } from 'lucide-react'
 const TOUR_STEPS = [
   {
     id: 'welcome',
-    target: null, // center modal, no spotlight
+    target: null,
     title: '환영합니다!',
     description: 'Outreach를 시작해볼까요?\n3분이면 첫 영업 캠페인을 만들 수 있습니다.',
     buttonText: '시작하기',
@@ -21,8 +21,8 @@ const TOUR_STEPS = [
     id: 'create_project',
     target: '[data-onboarding="new-project"]',
     title: '1단계: 프로젝트 만들기',
-    description: '영업 캠페인을 프로젝트 단위로 관리합니다.\n"새 프로젝트" 버튼을 클릭하세요.',
-    buttonText: null, // user must click the target
+    description: '영업 캠페인을 프로젝트 단위로 관리합니다.\n강조된 버튼을 클릭하거나, 아래 "다음" 버튼을 누르세요.',
+    buttonText: '다음',
     position: 'bottom',
     page: '/dashboard',
   },
@@ -30,8 +30,9 @@ const TOUR_STEPS = [
     id: 'go_settings',
     target: '[data-onboarding="nav-settings"]',
     title: '2단계: Gmail 연동하기',
-    description: '이메일을 보내려면 Gmail 설정이 필요합니다.\n설정 메뉴를 클릭하세요.',
-    buttonText: null,
+    description: '이메일을 보내려면 Gmail 설정이 필요합니다.\n강조된 메뉴를 클릭하거나, "다음"을 누르세요.',
+    buttonText: '다음',
+    navigate: '/settings',
     position: 'right',
     page: '/dashboard',
   },
@@ -40,7 +41,7 @@ const TOUR_STEPS = [
     target: '[data-onboarding="gmail-section"]',
     title: 'Gmail 앱 비밀번호 입력',
     description: 'Gmail 주소와 앱 비밀번호를 입력하고 저장하세요.\nGoogle 계정 → 보안 → 앱 비밀번호에서 생성할 수 있습니다.',
-    buttonText: '다음으로',
+    buttonText: '다음',
     position: 'bottom',
     page: '/settings',
   },
@@ -48,17 +49,19 @@ const TOUR_STEPS = [
     id: 'go_pipeline',
     target: '[data-onboarding="nav-pipeline"]',
     title: '3단계: 파이프라인 확인',
-    description: '영업 딜을 관리하는 칸반 보드입니다.\n파이프라인을 클릭해서 확인해보세요.',
-    buttonText: null,
+    description: '영업 딜을 관리하는 칸반 보드입니다.\n강조된 메뉴를 클릭하거나, "다음"을 누르세요.',
+    buttonText: '다음',
+    navigate: '/pipeline',
     position: 'right',
     page: '/settings',
   },
   {
     id: 'complete',
     target: null,
-    title: '설정 완료!',
-    description: '이제 프로젝트에서 키워드를 추가하고\n잠재고객을 수집해보세요.',
-    buttonText: '시작하기',
+    title: '준비 완료!',
+    description: '이제 프로젝트에서 키워드를 추가하고\n잠재고객을 수집해보세요.\n\n대시보드에서 시작할 수 있습니다.',
+    buttonText: '대시보드로 이동',
+    navigate: '/dashboard',
     position: 'center',
   },
 ]
@@ -122,11 +125,11 @@ export default function OnboardingGuide() {
     }
   }, [currentStep, location.pathname, updateSpotlight])
 
-  // Listen for target element clicks
+  // Listen for target element clicks (works alongside button)
   useEffect(() => {
     if (currentStep < 0 || currentStep >= TOUR_STEPS.length) return
     const step = TOUR_STEPS[currentStep]
-    if (!step.target || step.buttonText) return // skip if has explicit button
+    if (!step.target) return
 
     const handler = () => {
       completeStep(step.id)
@@ -157,13 +160,19 @@ export default function OnboardingGuide() {
   }
 
   const goNext = () => {
+    // If current step has a navigate target, go there
+    const current = TOUR_STEPS[currentStep]
+    if (current?.navigate) {
+      navigate(current.navigate)
+    }
+
     const nextStep = currentStep + 1
     if (nextStep >= TOUR_STEPS.length) {
       dismiss()
       return
     }
     const next = TOUR_STEPS[nextStep]
-    if (next.page && location.pathname !== next.page) {
+    if (next.page && location.pathname !== next.page && !current?.navigate) {
       navigate(next.page)
     }
     setCurrentStep(nextStep)
@@ -335,20 +344,16 @@ export default function OnboardingGuide() {
               <div className="h-full bg-blue-600 rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
             </div>
             <div className="flex items-center justify-between">
+              <button onClick={dismiss} className="text-[11px] text-gray-400 hover:text-gray-600 cursor-pointer">
+                건너뛰기
+              </button>
+              <button
+                onClick={() => { completeStep(step.id); goNext() }}
+                className="px-4 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 cursor-pointer flex items-center gap-1.5"
+              >
+                {step.buttonText || '다음'} <ArrowRight className="w-3 h-3" />
+              </button>
               <span className="text-[10px] text-gray-400">{currentStep + 1}/{TOUR_STEPS.length}</span>
-              <div className="flex gap-2">
-                <button onClick={dismiss} className="text-xs text-gray-400 hover:text-gray-600 cursor-pointer">
-                  건너뛰기
-                </button>
-                {step.buttonText && (
-                  <button
-                    onClick={() => { completeStep(step.id); goNext() }}
-                    className="text-xs text-blue-600 font-medium hover:text-blue-700 cursor-pointer flex items-center gap-1"
-                  >
-                    {step.buttonText} <ArrowRight className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
             </div>
           </div>
         </div>
