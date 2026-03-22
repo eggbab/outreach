@@ -1,18 +1,14 @@
 import logging
-from typing import Optional
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.models.models import Keyword, Prospect
+from app.models.models import CollectionJob, Keyword, Prospect
 from app.services.collector.google import search_google
 from app.services.collector.instagram import search_instagram
 from app.services.collector.naver import search_naver, search_naver_map, search_naver_shopping
 
 logger = logging.getLogger(__name__)
-
-# In-memory status store for collection progress.
-# In production, use Redis or a DB table.
-collection_status_store: dict[str, dict] = {}
 
 # Map source types to their collector functions
 SOURCE_COLLECTORS = {
@@ -30,110 +26,113 @@ class CollectionManager:
     def __init__(self, db: Session):
         self.db = db
 
-    def run_collection(self, project_id: int, user_id: int) -> None:
+    def run_collection(self, project_id: int, user_id: int, sources: list[str] | None = None) -> None:
         """
         Run collection for all keywords in the project.
-        Updates progress in collection_status_store.
+        If sources is provided, each keyword is collected from each specified source.
+        Otherwise, falls back to the keyword's own source field.
+        Updates progress in CollectionJob DB table.
         """
-        key = f"{user_id}:{project_id}"
-
         keywords = (
             self.db.query(Keyword)
             .filter(Keyword.project_id == project_id)
             .all()
         )
 
-        if not keywords:
-            collection_status_store[key] = {
-                "status": "completed",
-                "total_keywords": 0,
-                "processed_keywords": 0,
-                "prospects_found": 0,
-                "current_keyword": None,
-                "error": None,
-            }
+        # Build task list: (keyword_text, source)
+        tasks = []
+        if sources:
+            for kw in keywords:
+                for src in sources:
+                    tasks.append((kw.keyword, src))
+        else:
+            for kw in keywords:
+                tasks.append((kw.keyword, kw.source))
+
+        # Create or update job record
+        job = (
+            self.db.query(CollectionJob)
+            .filter(CollectionJob.project_id == project_id, CollectionJob.user_id == user_id)
+            .order_by(CollectionJob.started_at.desc())
+            .first()
+        )
+        if not job or job.status != "running":
+            job = CollectionJob(
+                project_id=project_id,
+                user_id=user_id,
+                status="running",
+                total_tasks=len(tasks),
+                processed_tasks=0,
+                prospects_found=0,
+            )
+            self.db.add(job)
+            self.db.commit()
+            self.db.refresh(job)
+
+        if not tasks:
+            job.status = "completed"
+            job.completed_at = datetime.now(timezone.utc)
+            self.db.commit()
             return
 
         total_prospects_found = 0
 
-        for i, kw in enumerate(keywords):
-            # Update progress
-            collection_status_store[key] = {
-                "status": "running",
-                "total_keywords": len(keywords),
-                "processed_keywords": i,
-                "prospects_found": total_prospects_found,
-                "current_keyword": f"{kw.keyword} ({kw.source})",
-                "error": None,
-            }
+        for i, (keyword_text, source) in enumerate(tasks):
+            job.processed_tasks = i
+            job.current_task = f"{keyword_text} ({source})"
+            job.prospects_found = total_prospects_found
+            self.db.commit()
 
             try:
-                collector_fn = SOURCE_COLLECTORS.get(kw.source)
+                collector_fn = SOURCE_COLLECTORS.get(source)
                 if not collector_fn:
-                    logger.warning(f"Unknown source: {kw.source}")
+                    logger.warning(f"Unknown source: {source}")
                     continue
 
-                raw_prospects = collector_fn(kw.keyword)
-
-                # Deduplicate and save to DB
+                raw_prospects = collector_fn(keyword_text)
                 saved = self._save_prospects(project_id, raw_prospects)
                 total_prospects_found += saved
 
             except Exception as e:
-                logger.error(f"Error collecting '{kw.keyword}' from {kw.source}: {e}")
+                logger.error(f"Error collecting '{keyword_text}' from {source}: {e}")
                 continue
 
-        # Final status
-        collection_status_store[key] = {
-            "status": "completed",
-            "total_keywords": len(keywords),
-            "processed_keywords": len(keywords),
-            "prospects_found": total_prospects_found,
-            "current_keyword": None,
-            "error": None,
-        }
+        job.status = "completed"
+        job.processed_tasks = len(tasks)
+        job.prospects_found = total_prospects_found
+        job.current_task = None
+        job.completed_at = datetime.now(timezone.utc)
+        self.db.commit()
 
     def _save_prospects(self, project_id: int, raw_prospects: list[dict]) -> int:
         """Save prospects to DB, skipping duplicates. Returns count of newly saved."""
         saved_count = 0
 
         for data in raw_prospects:
-            # Skip if no useful contact info
             if not data.get("email") and not data.get("phone") and not data.get("instagram"):
                 continue
 
-            # Check for duplicates (same project, same email or same website)
             existing = None
             if data.get("email"):
                 existing = (
                     self.db.query(Prospect)
-                    .filter(
-                        Prospect.project_id == project_id,
-                        Prospect.email == data["email"],
-                    )
+                    .filter(Prospect.project_id == project_id, Prospect.email == data["email"])
                     .first()
                 )
             if not existing and data.get("website"):
                 existing = (
                     self.db.query(Prospect)
-                    .filter(
-                        Prospect.project_id == project_id,
-                        Prospect.website == data["website"],
-                    )
+                    .filter(Prospect.project_id == project_id, Prospect.website == data["website"])
                     .first()
                 )
             if not existing and data.get("instagram"):
                 existing = (
                     self.db.query(Prospect)
-                    .filter(
-                        Prospect.project_id == project_id,
-                        Prospect.instagram == data["instagram"],
-                    )
+                    .filter(Prospect.project_id == project_id, Prospect.instagram == data["instagram"])
                     .first()
                 )
 
             if existing:
-                # Update existing with new info if available
                 if data.get("email") and not existing.email:
                     existing.email = data["email"]
                 if data.get("phone") and not existing.phone:

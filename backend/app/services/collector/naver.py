@@ -27,14 +27,72 @@ EXCLUDE_EMAIL_DOMAINS = {
     "daum.net", "hanmail.net", "nate.com",
 }
 
+MAX_RETRIES = 2
+BACKOFF_SECONDS = [2, 4]
+
+
+def _request_with_retry(client: httpx.Client, url: str, context: str = "") -> Optional[httpx.Response]:
+    """
+    Make an HTTP GET request with retry logic.
+    - Retries up to 2 times with exponential backoff (2s, 4s).
+    - On 403/429: sleep 5s and retry once.
+    - On 404: skip silently, return None.
+    - On timeout: log warning, return None.
+    """
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            resp = client.get(url)
+
+            if resp.status_code == 404:
+                return None
+
+            if resp.status_code in (403, 429):
+                logger.warning(f"[{context}] HTTP {resp.status_code} (rate limited/blocked) for {url}")
+                if attempt == 0:
+                    time.sleep(5)
+                    continue
+                return None
+
+            if resp.status_code != 200:
+                logger.warning(f"[{context}] HTTP {resp.status_code} for {url}")
+                if attempt < MAX_RETRIES:
+                    time.sleep(BACKOFF_SECONDS[attempt])
+                    continue
+                return None
+
+            return resp
+
+        except httpx.TimeoutException:
+            logger.warning(f"[{context}] Connection timeout for {url} (attempt {attempt + 1}/{MAX_RETRIES + 1})")
+            if attempt < MAX_RETRIES:
+                time.sleep(BACKOFF_SECONDS[attempt])
+                continue
+            return None
+
+        except httpx.ConnectError as e:
+            logger.warning(f"[{context}] Connection error for {url}: {e} (attempt {attempt + 1}/{MAX_RETRIES + 1})")
+            if attempt < MAX_RETRIES:
+                time.sleep(BACKOFF_SECONDS[attempt])
+                continue
+            return None
+
+        except Exception as e:
+            logger.error(f"[{context}] Unexpected error requesting {url}: {e}")
+            if attempt < MAX_RETRIES:
+                time.sleep(BACKOFF_SECONDS[attempt])
+                continue
+            return None
+
+    return None
+
 
 def _extract_contact_from_url(url: str, timeout: float = 10.0) -> dict:
     """Visit a URL and extract email/phone from page content."""
     result = {"emails": [], "phones": []}
     try:
         with httpx.Client(headers=HEADERS, follow_redirects=True, timeout=timeout) as client:
-            resp = client.get(url)
-            if resp.status_code != 200:
+            resp = _request_with_retry(client, url, context="naver/extract_contact")
+            if resp is None:
                 return result
 
             text = resp.text
@@ -51,7 +109,7 @@ def _extract_contact_from_url(url: str, timeout: float = 10.0) -> dict:
             result["phones"] = list(set(phones))
 
     except Exception as e:
-        logger.debug(f"Error extracting contacts from {url}: {e}")
+        logger.error(f"[naver/extract_contact] Failed to extract contacts from {url}: {e}")
 
     result["emails"] = list(set(result["emails"]))
     return result
@@ -65,9 +123,9 @@ def search_naver(keyword: str, max_results: int = 20) -> list[dict]:
 
     try:
         with httpx.Client(headers=HEADERS, follow_redirects=True, timeout=15) as client:
-            resp = client.get(url)
-            if resp.status_code != 200:
-                logger.warning(f"Naver search returned {resp.status_code}")
+            resp = _request_with_retry(client, url, context="naver/search")
+            if resp is None:
+                logger.warning(f"[naver/search] Failed to get search results for '{keyword}'")
                 return prospects
 
             soup = BeautifulSoup(resp.text, "html.parser")
@@ -102,11 +160,11 @@ def search_naver(keyword: str, max_results: int = 20) -> list[dict]:
 
                     time.sleep(1)  # Rate limiting
                 except Exception as e:
-                    logger.debug(f"Error processing {site_url}: {e}")
+                    logger.error(f"[naver/search] Error processing {site_url}: {e}")
                     continue
 
     except Exception as e:
-        logger.error(f"Naver search error for '{keyword}': {e}")
+        logger.error(f"[naver/search] Search error for '{keyword}': {e}")
 
     return prospects
 
@@ -119,8 +177,9 @@ def search_naver_shopping(keyword: str, max_results: int = 15) -> list[dict]:
 
     try:
         with httpx.Client(headers=HEADERS, follow_redirects=True, timeout=15) as client:
-            resp = client.get(url)
-            if resp.status_code != 200:
+            resp = _request_with_retry(client, url, context="naver_shopping/search")
+            if resp is None:
+                logger.warning(f"[naver_shopping/search] Failed to get results for '{keyword}'")
                 return prospects
 
             soup = BeautifulSoup(resp.text, "html.parser")
@@ -150,11 +209,12 @@ def search_naver_shopping(keyword: str, max_results: int = 15) -> list[dict]:
                     }
                     prospects.append(prospect)
                     time.sleep(1)
-                except Exception:
+                except Exception as e:
+                    logger.error(f"[naver_shopping/search] Error processing {store_url}: {e}")
                     continue
 
     except Exception as e:
-        logger.error(f"Naver Shopping search error for '{keyword}': {e}")
+        logger.error(f"[naver_shopping/search] Search error for '{keyword}': {e}")
 
     return prospects
 
@@ -170,13 +230,15 @@ def search_naver_map(keyword: str, max_results: int = 15) -> list[dict]:
     try:
         map_headers = {**HEADERS, "Referer": "https://map.naver.com/"}
         with httpx.Client(headers=map_headers, follow_redirects=True, timeout=15) as client:
-            resp = client.get(url)
-            if resp.status_code != 200:
+            resp = _request_with_retry(client, url, context="naver_map/search")
+            if resp is None:
+                logger.warning(f"[naver_map/search] Failed to get results for '{keyword}'")
                 return prospects
 
             try:
                 data = resp.json()
             except Exception:
+                logger.warning(f"[naver_map/search] Invalid JSON response for '{keyword}'")
                 return prospects
 
             # Extract place results
@@ -205,6 +267,6 @@ def search_naver_map(keyword: str, max_results: int = 15) -> list[dict]:
                 prospects.append(prospect)
 
     except Exception as e:
-        logger.error(f"Naver Map search error for '{keyword}': {e}")
+        logger.error(f"[naver_map/search] Search error for '{keyword}': {e}")
 
     return prospects

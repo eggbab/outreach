@@ -10,7 +10,10 @@ import {
   X,
   ChevronRight,
   Calendar,
+  Eye,
+  MousePointer,
 } from 'lucide-react'
+import OnboardingGuide from '../components/OnboardingGuide'
 
 export default function DashboardPage() {
   const navigate = useNavigate()
@@ -19,6 +22,8 @@ export default function DashboardPage() {
     total_prospects: 0,
     emails_sent: 0,
     dms_sent: 0,
+    emails_opened: 0,
+    emails_clicked: 0,
   })
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
@@ -79,6 +84,8 @@ export default function DashboardPage() {
     { label: '전체 잠재고객', value: stats.total_prospects, icon: Users, color: 'text-green-600 bg-green-50' },
     { label: '이메일 발송', value: stats.emails_sent, icon: Mail, color: 'text-purple-600 bg-purple-50' },
     { label: 'DM 발송', value: stats.dms_sent, icon: MessageCircle, color: 'text-orange-600 bg-orange-50' },
+    { label: '이메일 열람', value: stats.emails_opened, icon: Eye, color: 'text-violet-600 bg-violet-50' },
+    { label: '링크 클릭', value: stats.emails_clicked, icon: MousePointer, color: 'text-teal-600 bg-teal-50' },
   ]
 
   if (loading) {
@@ -102,13 +109,15 @@ export default function DashboardPage() {
         </div>
       )}
 
+      <OnboardingGuide />
+
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900">대시보드</h1>
         <p className="text-gray-500 mt-1">영업 자동화 현황을 한눈에 확인하세요.</p>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
         {statCards.map((card) => (
           <div key={card.label} className="bg-white rounded-xl border border-gray-200 p-5">
             <div className="flex items-center gap-3">

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models.models import DmLog, Prospect, User
+from app.models.models import DmLog, Project, Prospect, User
 
 router = APIRouter(prefix="/api/chrome", tags=["chrome"])
 
@@ -93,7 +93,12 @@ def report_dm_result(
     current_user: User = Depends(get_current_user),
 ):
     """Report DM send result from chrome extension."""
-    prospect = db.query(Prospect).filter(Prospect.id == req.prospect_id).first()
+    prospect = (
+        db.query(Prospect)
+        .join(Project, Prospect.project_id == Project.id)
+        .filter(Prospect.id == req.prospect_id, Project.user_id == current_user.id)
+        .first()
+    )
     if not prospect:
         raise HTTPException(status_code=404, detail="Prospect not found")
 

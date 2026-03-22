@@ -1,5 +1,8 @@
+import re
 from datetime import datetime
 from typing import Optional
+
+import math
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -9,6 +12,16 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.models import Project, Prospect, User
+
+# Simple email format validation regex
+_EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
+
+
+def is_valid_email(email: str | None) -> bool:
+    """Return True if email looks valid, False otherwise."""
+    if not email:
+        return False
+    return bool(_EMAIL_RE.match(email.strip()))
 
 router = APIRouter(
     prefix="/api/projects/{project_id}/prospects",
@@ -20,6 +33,7 @@ class ProspectResponse(BaseModel):
     id: int
     name: Optional[str] = None
     email: Optional[str] = None
+    email_valid: Optional[bool] = None
     phone: Optional[str] = None
     instagram: Optional[str] = None
     website: Optional[str] = None
@@ -32,9 +46,24 @@ class ProspectResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ProspectImportItem(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    instagram: Optional[str] = None
+    website: Optional[str] = None
+    source: Optional[str] = None
+    category: Optional[str] = None
+
+
+class ProspectImportRequest(BaseModel):
+    prospects: list[ProspectImportItem]
+
+
 class ProspectListResponse(BaseModel):
-    prospects: list[ProspectResponse]
+    items: list[ProspectResponse]
     total: int
+    total_pages: int
     page: int
     page_size: int
 
@@ -87,8 +116,9 @@ def list_prospects(
     )
 
     return ProspectListResponse(
-        prospects=prospects,
+        items=prospects,
         total=total,
+        total_pages=math.ceil(total / page_size) if total > 0 else 1,
         page=page,
         page_size=page_size,
     )
@@ -168,3 +198,36 @@ def get_prospect_stats(
         dm_sent=stats.get("dm_sent", 0),
         total=total,
     )
+
+
+@router.post("/import", response_model=dict)
+def import_prospects(
+    project_id: int,
+    req: ProspectImportRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Import prospects with email format validation."""
+    _get_project_or_404(project_id, current_user.id, db)
+
+    imported = 0
+    skipped = 0
+    for item in req.prospects:
+        email_valid = is_valid_email(item.email) if item.email else None
+        prospect = Prospect(
+            project_id=project_id,
+            name=item.name,
+            email=item.email,
+            email_valid=email_valid,
+            phone=item.phone,
+            instagram=item.instagram,
+            website=item.website,
+            source=item.source or "import",
+            category=item.category,
+            status="collected",
+        )
+        db.add(prospect)
+        imported += 1
+
+    db.commit()
+    return {"imported": imported, "skipped": skipped}

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import api from '../lib/api'
 import { Save, Loader2 } from 'lucide-react'
+import DeliverabilityChecker from '../components/DeliverabilityChecker'
+import TagManager from '../components/TagManager'
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState({
@@ -68,7 +70,7 @@ export default function SettingsPage() {
         <p className="text-gray-500 mt-1">이메일 및 DM 발송 설정을 관리합니다.</p>
       </div>
 
-      <div className="space-y-6 max-w-2xl">
+      <div className="space-y-6">
         {/* Gmail Settings */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h2 className="text-base font-semibold text-gray-900 mb-4">Gmail 설정</h2>
@@ -159,7 +161,7 @@ export default function SettingsPage() {
         </div>
 
         {/* Save */}
-        <div className="flex justify-end pb-8">
+        <div className="flex justify-end">
           <button
             onClick={handleSave}
             disabled={saving}
@@ -169,6 +171,20 @@ export default function SettingsPage() {
             {saving ? '저장 중...' : '설정 저장'}
           </button>
         </div>
+
+        {/* Tag Manager */}
+        <TagManager />
+
+        {/* Deliverability Checker */}
+        <DeliverabilityChecker />
+
+        {/* Kakao - coming soon */}
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <h2 className="text-base font-semibold text-gray-900 mb-2">카카오톡 연동</h2>
+          <p className="text-sm text-gray-400">준비 중입니다. 곧 카카오톡 알림톡/친구톡 연동을 지원합니다.</p>
+        </div>
+
+        <div className="pb-8" />
       </div>
     </div>
   )

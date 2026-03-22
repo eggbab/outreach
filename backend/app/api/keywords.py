@@ -1,6 +1,7 @@
 from datetime import datetime
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -13,14 +14,7 @@ router = APIRouter(
     tags=["keywords"],
 )
 
-
-class KeywordItem(BaseModel):
-    keyword: str
-    source: str  # naver, google, instagram, naver_shopping, naver_map
-
-
-class KeywordCreate(BaseModel):
-    keywords: list[KeywordItem]
+VALID_SOURCES = {"naver", "google", "instagram", "naver_shopping", "naver_map"}
 
 
 class KeywordResponse(BaseModel):
@@ -43,31 +37,28 @@ def _get_project_or_404(project_id: int, user_id: int, db: Session) -> Project:
     return project
 
 
-@router.post("/", response_model=list[KeywordResponse], status_code=status.HTTP_201_CREATED)
-def add_keywords(
+@router.post("/", response_model=KeywordResponse, status_code=status.HTTP_201_CREATED)
+def add_keyword(
     project_id: int,
-    req: KeywordCreate,
+    keyword: str = Body(..., embed=True),
+    source: str = Body("naver", embed=True),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Add a single keyword. Accepts { keyword: "text" } or { keyword: "text", source: "naver" }."""
     _get_project_or_404(project_id, current_user.id, db)
 
-    valid_sources = {"naver", "google", "instagram", "naver_shopping", "naver_map"}
-    created = []
-    for item in req.keywords:
-        if item.source not in valid_sources:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid source: {item.source}. Must be one of {valid_sources}",
-            )
-        kw = Keyword(project_id=project_id, keyword=item.keyword, source=item.source)
-        db.add(kw)
-        created.append(kw)
+    if source not in VALID_SOURCES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid source: {source}. Must be one of {VALID_SOURCES}",
+        )
 
+    kw = Keyword(project_id=project_id, keyword=keyword, source=source)
+    db.add(kw)
     db.commit()
-    for kw in created:
-        db.refresh(kw)
-    return created
+    db.refresh(kw)
+    return kw
 
 
 @router.get("/", response_model=list[KeywordResponse])

@@ -50,7 +50,7 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     api.get(`/projects/${id}`)
       .then((res) => setProject(res.data))
-      .catch(() => navigate('/'))
+      .catch(() => navigate('/dashboard'))
       .finally(() => setLoading(false))
   }, [id, navigate])
 
@@ -79,13 +79,30 @@ export default function ProjectDetailPage() {
       {/* Header */}
       <div className="mb-6">
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/dashboard')}
           className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-3 cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
           대시보드로 돌아가기
         </button>
-        <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
+          <button
+            onClick={async () => {
+              if (!window.confirm('정말로 이 프로젝트를 삭제하시겠습니까?')) return
+              try {
+                await api.delete(`/projects/${id}`)
+                navigate('/dashboard')
+              } catch (err) {
+                showToast(err.response?.data?.detail || '프로젝트 삭제 실패', 'error')
+              }
+            }}
+            className="inline-flex items-center gap-1 text-sm text-red-500 hover:text-red-700 cursor-pointer"
+          >
+            <Trash2 className="w-4 h-4" />
+            삭제
+          </button>
+        </div>
         {project.description && <p className="text-gray-500 mt-1">{project.description}</p>}
       </div>
 
@@ -418,9 +435,10 @@ function EmailTab({ projectId, showToast }) {
     setSending(true)
     setLogs([])
     try {
-      const res = await api.post(`/projects/${projectId}/send/email`)
-      setLogs(res.data.logs || [{ message: `${res.data.sent_count}건 발송 완료`, type: 'success' }])
-      showToast(`이메일 ${res.data.sent_count}건 발송 완료`)
+      const res = await api.post(`/projects/${projectId}/send-email`)
+      const targetCount = res.data.target_count || 0
+      setLogs([{ message: `이메일 발송이 시작되었습니다. ${targetCount}건 대상`, type: 'success' }])
+      showToast(`이메일 발송이 시작되었습니다. ${targetCount}건 대상`)
     } catch (err) {
       showToast(err.response?.data?.detail || '발송 실패', 'error')
       setLogs((prev) => [...prev, { message: '발송 중 오류 발생', type: 'error' }])
@@ -432,7 +450,7 @@ function EmailTab({ projectId, showToast }) {
   const sendTest = async () => {
     setTestSending(true)
     try {
-      await api.post(`/projects/${projectId}/send/email/test`)
+      await api.post(`/projects/${projectId}/send-test-email`)
       showToast('테스트 이메일 발송 완료')
     } catch (err) {
       showToast(err.response?.data?.detail || '테스트 발송 실패', 'error')
@@ -622,14 +640,16 @@ function DmTab({ projectId, showToast }) {
                 <tr className="bg-gray-50 border-b border-gray-200">
                   <th className="text-left px-4 py-2.5 font-medium text-gray-600">업체명</th>
                   <th className="text-left px-4 py-2.5 font-medium text-gray-600">인스타그램</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-gray-600">카테고리</th>
                   <th className="text-left px-4 py-2.5 font-medium text-gray-600">상태</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {queue.map((item, i) => (
-                  <tr key={i}>
+                {queue.map((item) => (
+                  <tr key={item.prospect_id}>
                     <td className="px-4 py-2.5 text-gray-900">{item.name}</td>
                     <td className="px-4 py-2.5 text-blue-600">@{item.instagram}</td>
+                    <td className="px-4 py-2.5 text-gray-600">{item.category || '-'}</td>
                     <td className="px-4 py-2.5">
                       <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
                         대기

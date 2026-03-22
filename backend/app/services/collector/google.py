@@ -1,6 +1,7 @@
 import logging
 import re
 import time
+from typing import Optional
 from urllib.parse import quote_plus, urlparse
 
 import httpx
@@ -26,6 +27,64 @@ SKIP_DOMAINS = {
     "wikipedia.org", "tistory.com", "blog.naver.com",
 }
 
+MAX_RETRIES = 2
+BACKOFF_SECONDS = [2, 4]
+
+
+def _request_with_retry(client: httpx.Client, url: str, context: str = "") -> Optional[httpx.Response]:
+    """
+    Make an HTTP GET request with retry logic.
+    - Retries up to 2 times with exponential backoff (2s, 4s).
+    - On 403/429: sleep 5s and retry once.
+    - On 404: skip silently, return None.
+    - On timeout: log warning, return None.
+    """
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            resp = client.get(url)
+
+            if resp.status_code == 404:
+                return None
+
+            if resp.status_code in (403, 429):
+                logger.warning(f"[{context}] HTTP {resp.status_code} (rate limited/blocked) for {url}")
+                if attempt == 0:
+                    time.sleep(5)
+                    continue
+                return None
+
+            if resp.status_code != 200:
+                logger.warning(f"[{context}] HTTP {resp.status_code} for {url}")
+                if attempt < MAX_RETRIES:
+                    time.sleep(BACKOFF_SECONDS[attempt])
+                    continue
+                return None
+
+            return resp
+
+        except httpx.TimeoutException:
+            logger.warning(f"[{context}] Connection timeout for {url} (attempt {attempt + 1}/{MAX_RETRIES + 1})")
+            if attempt < MAX_RETRIES:
+                time.sleep(BACKOFF_SECONDS[attempt])
+                continue
+            return None
+
+        except httpx.ConnectError as e:
+            logger.warning(f"[{context}] Connection error for {url}: {e} (attempt {attempt + 1}/{MAX_RETRIES + 1})")
+            if attempt < MAX_RETRIES:
+                time.sleep(BACKOFF_SECONDS[attempt])
+                continue
+            return None
+
+        except Exception as e:
+            logger.error(f"[{context}] Unexpected error requesting {url}: {e}")
+            if attempt < MAX_RETRIES:
+                time.sleep(BACKOFF_SECONDS[attempt])
+                continue
+            return None
+
+    return None
+
 
 def search_google(keyword: str, max_results: int = 15) -> list[dict]:
     """Search Google for businesses matching the keyword and extract contacts."""
@@ -35,9 +94,9 @@ def search_google(keyword: str, max_results: int = 15) -> list[dict]:
 
     try:
         with httpx.Client(headers=HEADERS, follow_redirects=True, timeout=15) as client:
-            resp = client.get(url)
-            if resp.status_code != 200:
-                logger.warning(f"Google search returned {resp.status_code}")
+            resp = _request_with_retry(client, url, context="google/search")
+            if resp is None:
+                logger.warning(f"[google/search] Failed to get search results for '{keyword}'")
                 return prospects
 
             soup = BeautifulSoup(resp.text, "html.parser")
@@ -61,8 +120,8 @@ def search_google(keyword: str, max_results: int = 15) -> list[dict]:
             for site_url in list(seen_urls)[:max_results]:
                 try:
                     with httpx.Client(headers=HEADERS, follow_redirects=True, timeout=10) as visit_client:
-                        page_resp = visit_client.get(site_url)
-                        if page_resp.status_code != 200:
+                        page_resp = _request_with_retry(visit_client, site_url, context="google/visit")
+                        if page_resp is None:
                             continue
 
                         text = page_resp.text
@@ -92,10 +151,10 @@ def search_google(keyword: str, max_results: int = 15) -> list[dict]:
 
                     time.sleep(1.5)  # Rate limiting for Google
                 except Exception as e:
-                    logger.debug(f"Error processing {site_url}: {e}")
+                    logger.error(f"[google/visit] Error processing {site_url}: {e}")
                     continue
 
     except Exception as e:
-        logger.error(f"Google search error for '{keyword}': {e}")
+        logger.error(f"[google/search] Search error for '{keyword}': {e}")
 
     return prospects

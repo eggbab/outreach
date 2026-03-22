@@ -19,6 +19,64 @@ HEADERS = {
 
 EMAIL_REGEX = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
 
+MAX_RETRIES = 2
+BACKOFF_SECONDS = [2, 4]
+
+
+def _request_with_retry(client: httpx.Client, url: str, context: str = "", **kwargs) -> Optional[httpx.Response]:
+    """
+    Make an HTTP GET request with retry logic.
+    - Retries up to 2 times with exponential backoff (2s, 4s).
+    - On 403/429: sleep 5s and retry once.
+    - On 404: skip silently, return None.
+    - On timeout: log warning, return None.
+    """
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            resp = client.get(url, **kwargs)
+
+            if resp.status_code == 404:
+                return None
+
+            if resp.status_code in (403, 429):
+                logger.warning(f"[{context}] HTTP {resp.status_code} (rate limited/blocked) for {url}")
+                if attempt == 0:
+                    time.sleep(5)
+                    continue
+                return None
+
+            if resp.status_code != 200:
+                logger.warning(f"[{context}] HTTP {resp.status_code} for {url}")
+                if attempt < MAX_RETRIES:
+                    time.sleep(BACKOFF_SECONDS[attempt])
+                    continue
+                return None
+
+            return resp
+
+        except httpx.TimeoutException:
+            logger.warning(f"[{context}] Connection timeout for {url} (attempt {attempt + 1}/{MAX_RETRIES + 1})")
+            if attempt < MAX_RETRIES:
+                time.sleep(BACKOFF_SECONDS[attempt])
+                continue
+            return None
+
+        except httpx.ConnectError as e:
+            logger.warning(f"[{context}] Connection error for {url}: {e} (attempt {attempt + 1}/{MAX_RETRIES + 1})")
+            if attempt < MAX_RETRIES:
+                time.sleep(BACKOFF_SECONDS[attempt])
+                continue
+            return None
+
+        except Exception as e:
+            logger.error(f"[{context}] Unexpected error requesting {url}: {e}")
+            if attempt < MAX_RETRIES:
+                time.sleep(BACKOFF_SECONDS[attempt])
+                continue
+            return None
+
+    return None
+
 
 def search_instagram(keyword: str, max_results: int = 10) -> list[dict]:
     """
@@ -35,14 +93,15 @@ def search_instagram(keyword: str, max_results: int = 10) -> list[dict]:
         params = {"query": keyword}
 
         with httpx.Client(headers=HEADERS, follow_redirects=True, timeout=15) as client:
-            resp = client.get(url, params=params)
-            if resp.status_code != 200:
-                logger.warning(f"Instagram search returned {resp.status_code}")
+            resp = _request_with_retry(client, url, context="instagram/search", params=params)
+            if resp is None:
+                logger.warning(f"[instagram/search] Failed to get search results for '{keyword}'")
                 return prospects
 
             try:
                 data = resp.json()
             except Exception:
+                logger.warning(f"[instagram/search] Invalid JSON response for '{keyword}'")
                 return prospects
 
             users = data.get("users", [])
@@ -76,7 +135,7 @@ def search_instagram(keyword: str, max_results: int = 10) -> list[dict]:
                 time.sleep(0.5)
 
     except Exception as e:
-        logger.error(f"Instagram search error for '{keyword}': {e}")
+        logger.error(f"[instagram/search] Search error for '{keyword}': {e}")
 
     return prospects
 
@@ -90,11 +149,17 @@ def get_profile_info(username: str) -> Optional[dict]:
         url = f"https://www.instagram.com/{username}/?__a=1&__d=dis"
 
         with httpx.Client(headers=HEADERS, follow_redirects=True, timeout=10) as client:
-            resp = client.get(url)
-            if resp.status_code != 200:
+            resp = _request_with_retry(client, url, context="instagram/profile")
+            if resp is None:
+                logger.warning(f"[instagram/profile] Failed to get profile for '{username}'")
                 return None
 
-            data = resp.json()
+            try:
+                data = resp.json()
+            except Exception:
+                logger.warning(f"[instagram/profile] Invalid JSON response for '{username}'")
+                return None
+
             user = data.get("graphql", {}).get("user", {})
 
             biography = user.get("biography", "")
@@ -116,5 +181,5 @@ def get_profile_info(username: str) -> Optional[dict]:
             }
 
     except Exception as e:
-        logger.debug(f"Error getting profile for {username}: {e}")
+        logger.error(f"[instagram/profile] Error getting profile for {username}: {e}")
         return None

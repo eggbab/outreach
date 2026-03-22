@@ -50,9 +50,41 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
     db: Session = Depends(get_db),
 ):
-    from app.models.models import User
+    from app.models.models import ApiKey, User
+    import hashlib
 
-    payload = decode_access_token(credentials.credentials)
+    token = credentials.credentials
+
+    # Check if it's an API key (starts with "osk_")
+    if token.startswith("osk_"):
+        key_hash = hashlib.sha256(token.encode()).hexdigest()
+        # DB-level comparison via SQLAlchemy filter — not vulnerable to timing attacks
+        # since the comparison happens in PostgreSQL, not in Python.
+        api_key = db.query(ApiKey).filter(ApiKey.key_hash == key_hash, ApiKey.is_active == True).first()
+        if not api_key:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or revoked API key",
+            )
+        if api_key.expires_at and api_key.expires_at < datetime.now(timezone.utc):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="API key expired",
+            )
+        # Update last used
+        api_key.last_used_at = datetime.now(timezone.utc)
+        db.flush()
+
+        user = db.query(User).filter(User.id == api_key.user_id).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found",
+            )
+        return user
+
+    # Regular JWT token
+    payload = decode_access_token(token)
     user_id = payload.get("sub")
     if user_id is None:
         raise HTTPException(

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate, Navigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
-import { Send } from 'lucide-react'
+import Logo from '../components/Logo'
 
 export default function SignupPage() {
   const { signup, user, loading } = useAuth()
@@ -22,7 +22,7 @@ export default function SignupPage() {
   }
 
   if (user) {
-    return <Navigate to="/" replace />
+    return <Navigate to="/dashboard" replace />
   }
 
   const handleSubmit = async (e) => {
@@ -42,7 +42,7 @@ export default function SignupPage() {
     setSubmitting(true)
     try {
       await signup(email, password, name)
-      navigate('/')
+      navigate('/dashboard')
     } catch (err) {
       setError(err.response?.data?.detail || '회원가입에 실패했습니다.')
     } finally {
@@ -55,7 +55,7 @@ export default function SignupPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 mb-2">
-            <Send className="w-8 h-8 text-blue-600" />
+            <Logo size={32} />
             <span className="text-3xl font-bold text-gray-900">Outreach</span>
           </div>
           <p className="text-gray-500">B2B 영업 자동화 플랫폼</p>
