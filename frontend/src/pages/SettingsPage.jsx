@@ -72,7 +72,7 @@ export default function SettingsPage() {
 
       <div className="space-y-6">
         {/* Gmail Settings */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div data-onboarding="gmail-section" className="bg-white rounded-xl border border-gray-200 p-6">
           <h2 className="text-base font-semibold text-gray-900 mb-4">Gmail 설정</h2>
           <div className="space-y-4">
             <div>

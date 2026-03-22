@@ -166,6 +166,7 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-gray-900">프로젝트</h2>
         <button
+          data-onboarding="new-project"
           onClick={() => setShowModal(true)}
           className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors cursor-pointer"
         >

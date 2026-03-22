@@ -49,7 +49,7 @@ export default function Layout({ children }) {
         </NavLink>
 
         <p className={navSectionClass}>영업</p>
-        <NavLink to="/pipeline" className={navLinkClass} onClick={closeMobile}>
+        <NavLink to="/pipeline" data-onboarding="nav-pipeline" className={navLinkClass} onClick={closeMobile}>
           <Kanban className="w-5 h-5" />
           파이프라인
         </NavLink>
@@ -95,7 +95,7 @@ export default function Layout({ children }) {
           <CreditCard className="w-5 h-5" />
           요금제
         </NavLink>
-        <NavLink to="/settings" className={navLinkClass} onClick={closeMobile}>
+        <NavLink to="/settings" data-onboarding="nav-settings" className={navLinkClass} onClick={closeMobile}>
           <Settings className="w-5 h-5" />
           설정
         </NavLink>
