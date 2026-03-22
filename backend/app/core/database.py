@@ -4,22 +4,23 @@ from typing import Generator
 
 from app.core.config import settings
 
+_db_url = settings.DATABASE_URL
 _connect_args = {}
 _engine_kwargs = {}
 
-if settings.DATABASE_URL.startswith("sqlite"):
+if _db_url.startswith("sqlite"):
     _connect_args = {"check_same_thread": False}
-elif "pooler.supabase.com" in settings.DATABASE_URL:
-    # Supabase transaction pooler doesn't support prepared statements
-    _connect_args = {"options": "-c statement_timeout=30000"}
-    _engine_kwargs = {
-        "pool_size": 5,
-        "max_overflow": 10,
-        "pool_recycle": 300,
-    }
+elif "supabase" in _db_url:
+    # Add sslmode if not already present
+    if "sslmode" not in _db_url:
+        sep = "&" if "?" in _db_url else "?"
+        _db_url = _db_url + sep + "sslmode=require"
+    # Serverless: use NullPool (no persistent connections)
+    from sqlalchemy.pool import NullPool
+    _engine_kwargs = {"poolclass": NullPool}
 
 engine = create_engine(
-    settings.DATABASE_URL,
+    _db_url,
     pool_pre_ping=True,
     connect_args=_connect_args,
     **_engine_kwargs,

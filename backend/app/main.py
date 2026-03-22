@@ -69,13 +69,18 @@ limiter = Limiter(key_func=get_remote_address)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create all tables on startup
-    Base.metadata.create_all(bind=engine)
-    # Start background scheduler
-    start_scheduler()
+    # Tables are managed by Alembic/MCP — skip create_all in production
+    if settings.DATABASE_URL.startswith("sqlite"):
+        Base.metadata.create_all(bind=engine)
+    try:
+        start_scheduler()
+    except Exception:
+        pass  # Scheduler may fail in serverless
     yield
-    # Stop scheduler on shutdown
-    stop_scheduler()
+    try:
+        stop_scheduler()
+    except Exception:
+        pass
 
 
 app = FastAPI(
