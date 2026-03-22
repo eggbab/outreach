@@ -90,8 +90,37 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div>
+        <div className="mb-8">
+          <div className="h-7 bg-gray-200 rounded w-32 mb-2 animate-pulse" />
+          <div className="h-4 bg-gray-200 rounded w-56 animate-pulse" />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+          {[1,2,3,4,5,6].map(i => (
+            <div key={i} className="bg-white rounded-xl border border-gray-200 p-5 animate-pulse">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-gray-200" />
+                <div>
+                  <div className="h-3 bg-gray-200 rounded w-16 mb-2" />
+                  <div className="h-6 bg-gray-200 rounded w-12" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="h-5 bg-gray-200 rounded w-24 mb-4 animate-pulse" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1,2,3].map(i => (
+            <div key={i} className="bg-white rounded-xl border border-gray-200 p-5 animate-pulse">
+              <div className="h-4 bg-gray-200 rounded w-32 mb-3" />
+              <div className="h-3 bg-gray-200 rounded w-48 mb-4" />
+              <div className="flex gap-4">
+                <div className="h-3 bg-gray-200 rounded w-12" />
+                <div className="h-3 bg-gray-200 rounded w-20" />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     )
   }
