@@ -85,8 +85,8 @@ class PipelineStatsResponse(BaseModel):
 # ── Helpers ──
 
 def create_default_stages(db: Session, user_id: int):
-    for s in DEFAULT_STAGES:
-        stage = PipelineStage(
+    db.add_all([
+        PipelineStage(
             user_id=user_id,
             name=s["name"],
             position=s["position"],
@@ -94,7 +94,8 @@ def create_default_stages(db: Session, user_id: int):
             is_won=s.get("is_won", False),
             is_lost=s.get("is_lost", False),
         )
-        db.add(stage)
+        for s in DEFAULT_STAGES
+    ])
 
 
 # ── Stage endpoints ──

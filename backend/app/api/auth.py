@@ -86,10 +86,12 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
     db.add(onboarding)
 
     db.commit()
-    db.refresh(user)
 
     token = create_access_token({"sub": str(user.id)})
-    return TokenResponse(token=token, user=UserResponse.model_validate(user))
+    return TokenResponse(token=token, user=UserResponse(
+        id=user.id, email=user.email, name=user.name,
+        plan=user.plan, created_at=user.created_at,
+    ))
 
 
 @router.post("/login", response_model=TokenResponse)
