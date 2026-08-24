@@ -39,6 +39,7 @@ class ProspectResponse(BaseModel):
     website: Optional[str] = None
     source: Optional[str] = None
     category: Optional[str] = None
+    score: int = 0
     status: str
     collected_at: datetime
     updated_at: datetime

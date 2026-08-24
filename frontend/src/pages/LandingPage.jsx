@@ -55,7 +55,7 @@ export default function LandingPage() {
           <RevealSection delay={0}>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50/80 backdrop-blur text-blue-700 text-xs font-medium mb-8 border border-blue-100">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-              서비스 키 발급 후 바로 사용 가능
+              가입 즉시 30 크레딧 무료 — 카드 등록 없이 바로 시작
             </div>
           </RevealSection>
 

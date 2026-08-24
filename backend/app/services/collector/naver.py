@@ -174,7 +174,6 @@ def search_naver_shopping(keyword: str, max_results: int = 15, match_level: str 
 def search_naver_map(keyword: str, max_results: int = 15, match_level: str = "medium") -> list[dict]:
     """Search Naver Map for local businesses using Playwright."""
     prospects = []
-    encoded = quote_plus(keyword)
 
     try:
         with sync_playwright() as p:
@@ -186,50 +185,40 @@ def search_naver_map(keyword: str, max_results: int = 15, match_level: str = "me
             )
             page = context.new_page()
 
-            # Navigate to Naver Map to establish cookies/context, then fetch API
-            page.goto("https://map.naver.com/", timeout=20000, wait_until="domcontentloaded")
-            page.wait_for_timeout(2000)
+            # 직접 API 호출은 네이버 캡차 토큰(CE_EMPTY_TOKEN)에 막힘 —
+            # 실제 검색 페이지를 열고 페이지 스스로 호출한 allSearch 응답을 가로챈다.
+            from urllib.parse import quote as _quote
+            captured = []
 
-            # Use the internal API endpoint via page.evaluate (same-origin fetch)
-            api_url = f"https://map.naver.com/p/api/search/allSearch?query={encoded}&type=all"
-            result = page.evaluate(
-                """async (url) => {
-                    try {
-                        const resp = await fetch(url, {
-                            headers: { 'Accept': 'application/json' }
-                        });
-                        const text = await resp.text();
-                        return { ok: resp.ok, status: resp.status, body: text };
-                    } catch(e) {
-                        return { ok: false, status: 0, body: String(e) };
-                    }
-                }""",
-                api_url,
+            def _on_response(resp):
+                if "api/search/allSearch" in resp.url and resp.status == 200:
+                    try:
+                        captured.append(resp.json())
+                    except Exception:
+                        pass
+
+            page.on("response", _on_response)
+            page.goto(
+                f"https://map.naver.com/p/search/{_quote(keyword)}",
+                timeout=30000,
+                wait_until="domcontentloaded",
             )
+            page.wait_for_timeout(6000)
 
-            data = None
-            if result and result.get("ok"):
-                try:
-                    import json as _json
-                    data = _json.loads(result.get("body") or "")
-                except Exception:
-                    data = None
+            place_list = []
+            for data in captured:
+                pl = (data.get("result") or {}).get("place")
+                if isinstance(pl, dict) and pl.get("list"):
+                    place_list = pl["list"]
+                    break
 
-            if data is None:
+            if not place_list:
                 logger.warning(
-                    f"[naver_map/search] API returned no data for '{keyword}' "
-                    f"(status={result.get('status') if result else 'n/a'}, "
-                    f"body_preview={(result.get('body') or '')[:120] if result else ''!r})"
+                    f"[naver_map/search] no place results for '{keyword}' "
+                    f"(captured {len(captured)} responses — 캡차/차단 가능성)"
                 )
                 browser.close()
                 return prospects
-
-            # Extract place results
-            place_list = (
-                data.get("result", {}).get("place", {}).get("list", [])
-                if isinstance(data, dict)
-                else []
-            )
 
             for place in place_list:
                 if len(prospects) >= max_results:
@@ -240,7 +229,12 @@ def search_naver_map(keyword: str, max_results: int = 15, match_level: str = "me
 
                 email = None
                 insta = None
-                if website and website.startswith("http"):
+                if website and "instagram.com/" in website:
+                    # 인스타 링크는 핸들만 직접 파싱 (페이지 방문은 차단 위험 + 이메일 없음)
+                    handle = website.split("instagram.com/")[-1].split("/")[0].split("?")[0]
+                    if handle and handle not in ("p", "reel", "explore"):
+                        insta = handle
+                elif website and website.startswith("http"):
                     try:
                         email, extracted_phone, _, insta = deep_extract_email(page, website)
                         place_phone = place_phone or extracted_phone

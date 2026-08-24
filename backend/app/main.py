@@ -192,6 +192,7 @@ _CSP_VALUE = (
     "default-src 'self'; "
     "script-src 'self' 'unsafe-inline'; "
     "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data:; "  # 랜딩 3D 배경 텍스처가 data: URI 사용
     "connect-src 'self'"
 )
 
@@ -237,6 +238,15 @@ if _frontend_dist.exists() and _frontend_assets.exists():
     @app.get("/favicon.svg")
     def serve_favicon():
         return FileResponse(str(_frontend_dist / "favicon.svg"))
+
+    @app.get("/sw.js")
+    def serve_service_worker():
+        # SPA fallback이 index.html을 돌려주면 MIME 오류로 등록 실패 — 직접 서빙
+        return FileResponse(str(_frontend_dist / "sw.js"), media_type="application/javascript")
+
+    _icons_dir = _frontend_dist / "icons"
+    if _icons_dir.exists():
+        app.mount("/icons", StaticFiles(directory=str(_icons_dir)), name="static-icons")
 
     # SPA fallback middleware — only for non-API, non-asset GET requests
     from starlette.middleware.base import BaseHTTPMiddleware

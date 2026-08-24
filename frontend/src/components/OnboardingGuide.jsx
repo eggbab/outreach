@@ -209,8 +209,8 @@ export default function OnboardingGuide() {
 
   return (
     <>
-      {/* Overlay */}
-      <div className="fixed inset-0" style={{ zIndex: 10000 }}>
+      {/* Overlay — 스포트라이트 모드에선 클릭을 가로채지 않음 (실제 버튼이 눌려야 함) */}
+      <div className="fixed inset-0" style={{ zIndex: 10000, pointerEvents: isSpotlight ? 'none' : 'auto' }}>
         {isSpotlight && rect ? (
           <div style={{
             position: 'fixed',
@@ -222,13 +222,14 @@ export default function OnboardingGuide() {
             boxShadow: '0 0 0 9999px rgba(0,0,0,0.55)',
             border: '2px solid rgba(96,165,250,0.6)',
             zIndex: 10001,
+            pointerEvents: 'none',
           }} />
         ) : (
           <div className="absolute inset-0 bg-black/55" />
         )}
       </div>
 
-      {/* Click zone on spotlight target */}
+      {/* Click zone on spotlight target — 실제 요소를 클릭시키고 투어 종료 (사용자가 실작업 시작) */}
       {isSpotlight && rect && (
         <div
           style={{
@@ -240,7 +241,19 @@ export default function OnboardingGuide() {
             zIndex: 10002,
             cursor: 'pointer',
           }}
-          onClick={next}
+          onClick={() => {
+            completeStep(s.id)
+            setShow(false)
+            api.post('/onboarding/dismiss').catch(() => {})
+            const el = document.querySelector(s.target)
+            if (el) {
+              const clickable = el.matches('button, a, [role="button"]')
+                ? el
+                : el.querySelector('button, a, [role="button"]') || el
+              // 오버레이 언마운트 후 실제 클릭 전달
+              setTimeout(() => clickable.click?.(), 0)
+            }
+          }}
         />
       )}
 

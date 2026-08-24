@@ -18,7 +18,12 @@ EMAIL_REGEX = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}(?![a-
 PHONE_REGEX = re.compile(r"0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}")
 # 인스타 핸들 — 사이트 본문/링크에서 추출
 INSTAGRAM_URL_REGEX = re.compile(r"instagram\.com/([a-zA-Z0-9_.]{1,30})")
-INSTAGRAM_BLACKLIST = {"p", "reel", "explore", "stories", "tv", "tags", "accounts", "about", "directory"}
+INSTAGRAM_BLACKLIST = {
+    "p", "reel", "explore", "stories", "tv", "tags", "accounts", "about", "directory",
+    # 플랫폼/서비스 공식 계정 — 업체 계정으로 오인 방지
+    "catchtable_official", "naver_official", "instagram", "kakao_official",
+    "baemin_official", "yogiyo_official", "coupang", "tablingofficial",
+}
 
 
 def keyword_matches(page_title: str, page_text: str, keyword: str, level: str = "medium") -> bool:
@@ -104,8 +109,12 @@ def _extract_instagram_handles(page) -> list[str]:
         m = INSTAGRAM_URL_REGEX.search(href or "")
         if m:
             h = m.group(1).strip(".").lower()
-            if h and h not in INSTAGRAM_BLACKLIST and len(h) <= 30:
-                handles.add(h)
+            if not h or h in INSTAGRAM_BLACKLIST or len(h) > 30:
+                continue
+            # 도메인이 핸들로 오인되는 경우 제외 (예: 공유 링크의 ppss.kr)
+            if re.search(r"\.(kr|com|net|org|io|co|me|shop)$", h):
+                continue
+            handles.add(h)
     return list(handles)
 
 
