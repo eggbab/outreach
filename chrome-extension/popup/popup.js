@@ -18,6 +18,7 @@ const stopBtn = $('#stop-btn');
 const dmCountEl = $('#dm-count');
 const dmLimitEl = $('#dm-limit');
 const queueSizeEl = $('#queue-size');
+const projectSelect = $('#project-select');
 const connectionStatus = $('#connection-status');
 const connectionText = $('#connection-text');
 const sendingStatus = $('#sending-status');
@@ -27,6 +28,7 @@ const logList = $('#log-list');
 
 // 상태
 let isSending = false;
+let currentProjectId = null;
 
 // --- 초기화 ---
 document.addEventListener('DOMContentLoaded', async () => {
@@ -38,6 +40,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (stored.authToken) {
     showMain();
+    await loadProjects();
     await refreshDashboard();
   } else {
     showLogin();
@@ -69,6 +72,7 @@ loginBtn.addEventListener('click', async () => {
   try {
     await OutreachAPI.login(serverUrl, email, password);
     showMain();
+    await loadProjects();
     await refreshDashboard();
   } catch (err) {
     showError(err.message);
@@ -89,14 +93,43 @@ logoutBtn.addEventListener('click', async () => {
   showLogin();
 });
 
+// --- 프로젝트 선택 ---
+projectSelect.addEventListener('change', async (e) => {
+  currentProjectId = e.target.value || null;
+  await chrome.storage.local.set({ currentProjectId });
+  await refreshDashboard();
+});
+
+async function loadProjects() {
+  try {
+    const projects = await OutreachAPI.getProjects();
+    const stored = await chrome.storage.local.get('currentProjectId');
+    projectSelect.innerHTML = '<option value="">— 프로젝트 선택 —</option>' +
+      projects.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+    if (stored.currentProjectId && projects.find(p => String(p.id) === String(stored.currentProjectId))) {
+      projectSelect.value = stored.currentProjectId;
+      currentProjectId = stored.currentProjectId;
+    } else if (projects.length === 1) {
+      projectSelect.value = String(projects[0].id);
+      currentProjectId = String(projects[0].id);
+      await chrome.storage.local.set({ currentProjectId });
+    }
+  } catch (err) {
+    console.error('프로젝트 로드 실패:', err);
+  }
+}
+
 // --- 발송 시작 ---
 startBtn.addEventListener('click', async () => {
+  if (!currentProjectId) {
+    alert('먼저 프로젝트를 선택해주세요.');
+    return;
+  }
   isSending = true;
-  await chrome.storage.local.set({ dmSending: true });
+  await chrome.storage.local.set({ dmSending: true, currentProjectId });
   showSendingUI();
 
-  // content script에 시작 메시지 전송
-  chrome.runtime.sendMessage({ type: 'START_DM_SENDING' });
+  chrome.runtime.sendMessage({ type: 'START_DM_SENDING', projectId: currentProjectId });
 });
 
 // --- 발송 중지 ---
@@ -111,29 +144,32 @@ stopBtn.addEventListener('click', async () => {
 
 // --- 대시보드 새로고침 ---
 async function refreshDashboard() {
+  if (!currentProjectId) {
+    queueSizeEl.textContent = '0';
+    startBtn.disabled = true;
+    startBtn.textContent = '프로젝트 선택 필요';
+    connectionStatus.className = 'status-dot status-disconnected';
+    connectionText.textContent = '프로젝트를 선택하세요';
+    await refreshLog();
+    return;
+  }
   try {
-    const queue = await OutreachAPI.getDmQueue();
-    queueSizeEl.textContent = queue.queue_size ?? queue.targets?.length ?? 0;
-    dmCountEl.textContent = queue.today_sent ?? 0;
-    dmLimitEl.textContent = queue.daily_limit ?? 15;
+    const queue = await OutreachAPI.getDmQueue(currentProjectId);
+    queueSizeEl.textContent = queue.total ?? queue.targets?.length ?? 0;
 
     connectionStatus.className = 'status-dot status-connected';
     connectionText.textContent = '서버 연결됨';
+    startBtn.disabled = (queue.total ?? 0) === 0;
+    startBtn.textContent = (queue.total ?? 0) === 0 ? '발송 대상 없음' : 'DM 발송 시작';
 
-    // 발송 가능 여부 체크
-    const todaySent = queue.today_sent ?? 0;
-    const dailyLimit = queue.daily_limit ?? 15;
-    if (todaySent >= dailyLimit) {
-      startBtn.disabled = true;
-      startBtn.textContent = '일일 한도 도달';
-    }
+    // 살아있음 알리기
+    OutreachAPI.ping(currentProjectId).catch(() => {});
   } catch (err) {
     connectionStatus.className = 'status-dot status-disconnected';
-    connectionText.textContent = '서버 연결 실패';
+    connectionText.textContent = '서버 연결 실패: ' + err.message;
     console.error('Dashboard refresh failed:', err);
   }
 
-  // 최근 로그 불러오기
   await refreshLog();
 }
 

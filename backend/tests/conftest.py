@@ -1,7 +1,8 @@
 import os
 
-# Override DATABASE_URL before any app imports
+# Override settings before any app imports
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+os.environ["RATE_LIMIT_ENABLED"] = "false"
 
 import pytest
 from contextlib import asynccontextmanager
@@ -89,6 +90,7 @@ def auth_headers(client):
             "email": "test@example.com",
             "password": "testpassword123",
             "name": "Test User",
+            "accept_terms": True,
         },
     )
     assert response.status_code == 201

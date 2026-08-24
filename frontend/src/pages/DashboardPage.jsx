@@ -13,7 +13,7 @@ import {
   Eye,
   MousePointer,
 } from 'lucide-react'
-import OnboardingGuide from '../components/OnboardingGuide'
+// OnboardingGuide moved to Layout.jsx
 
 export default function DashboardPage() {
   const navigate = useNavigate()
@@ -42,10 +42,10 @@ export default function DashboardPage() {
     try {
       const [statsRes, projectsRes] = await Promise.all([
         api.get('/dashboard/stats'),
-        api.get('/projects'),
+        api.get('/projects/'),
       ])
       setStats(statsRes.data)
-      setProjects(projectsRes.data)
+      setProjects(Array.isArray(projectsRes.data) ? projectsRes.data : [])
     } catch (err) {
       console.error('Failed to fetch dashboard data:', err)
     } finally {
@@ -137,8 +137,6 @@ export default function DashboardPage() {
           {toast.message}
         </div>
       )}
-
-      <OnboardingGuide />
 
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900">대시보드</h1>

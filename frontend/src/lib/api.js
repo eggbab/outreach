@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -40,8 +40,12 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token')
-      window.location.href = '/login'
+      const url = error.config?.url || ''
+      // Don't redirect on login/signup requests — let the page handle the error
+      if (!url.includes('/auth/login') && !url.includes('/auth/signup')) {
+        localStorage.removeItem('token')
+        window.location.href = '/login'
+      }
     }
 
     // Translate error message

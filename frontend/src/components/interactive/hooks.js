@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 /* ── Scroll reveal: fade + slide up when element enters viewport ── */
 export function useScrollReveal(options = {}) {

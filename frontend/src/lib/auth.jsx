@@ -34,8 +34,10 @@ export function AuthProvider({ children }) {
     return userData
   }
 
-  const signup = async (email, password, name) => {
-    const res = await api.post('/auth/signup', { email, password, name })
+  const signup = async (email, password, name, serviceKey = null, acceptTerms = false) => {
+    const payload = { email, password, name, accept_terms: acceptTerms }
+    if (serviceKey) payload.service_key = serviceKey
+    const res = await api.post('/auth/signup', payload)
     const { token: newToken, user: userData } = res.data
     localStorage.setItem('token', newToken)
     setToken(newToken)

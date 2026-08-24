@@ -1,14 +1,11 @@
 import threading
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 
-limiter = Limiter(key_func=get_remote_address)
-
+from app.core.rate_limit import limiter
 from app.core.database import get_db, SessionLocal
 from app.core.security import get_current_user
 from app.models.models import CollectionJob, Project, User
@@ -21,7 +18,8 @@ router = APIRouter(
 
 
 class CollectRequest(BaseModel):
-    sources: list[str] | None = None  # e.g. ["naver", "google"]
+    max_results: int = 20  # 키워드당 최대 수집 건수
+    match_level: str = "medium"  # loose | medium | strict — 키워드 매칭 정밀도
 
 
 class CollectResponse(BaseModel):
@@ -49,12 +47,12 @@ def _get_project_or_404(project_id: int, user_id: int, db: Session) -> Project:
     return project
 
 
-def _run_collection_in_background(project_id: int, user_id: int, sources: list[str] | None = None):
+def _run_collection_in_background(project_id: int, user_id: int, max_results: int = 20, match_level: str = "medium"):
     """Run collection in a background thread with its own DB session."""
     db = SessionLocal()
     try:
         manager = CollectionManager(db)
-        manager.run_collection(project_id, user_id, sources=sources)
+        manager.run_collection(project_id, user_id, max_results=max_results, match_level=match_level)
     except Exception as e:
         # Update job status on failure
         job = (
@@ -98,17 +96,11 @@ def start_collection(
             detail="Collection is already running for this project",
         )
 
-    # Check usage limit
-    from app.core.plans import check_usage_limit, deduct_credits
-    usage_check = check_usage_limit(db, current_user.id, current_user.plan, "daily_prospects")
-    if not usage_check["allowed"]:
-        if usage_check.get("reason") == "free_limit":
-            raise HTTPException(status_code=429, detail="무료 플랜의 일일 수집 한도에 도달했습니다. 유료 플랜으로 업그레이드해주세요.")
-        else:
-            raise HTTPException(status_code=429, detail=f"일일 수집 한도 초과. 크레딧이 부족합니다. (필요: {usage_check.get('credits_needed', 0)} 크레딧)")
-    if not usage_check.get("within_plan", True):
-        deduct_credits(db, current_user.id, usage_check["credits_needed"], "수집 한도 초과 — 건당 과금")
-        db.commit()
+    # Check credits
+    from app.core.plans import check_credits
+    credit_check = check_credits(db, current_user.id, "prospect", 1)
+    if not credit_check["allowed"]:
+        raise HTTPException(status_code=402, detail=f"크레딧이 부족합니다. (잔액: {credit_check['balance']})")
 
     keywords = project.keywords
     if not keywords:
@@ -117,17 +109,18 @@ def start_collection(
             detail="No keywords configured for this project. Add keywords first.",
         )
 
-    sources = req.sources or ["naver", "google"]
+    max_results = max(1, min(req.max_results, 100))
+    match_level = req.match_level if req.match_level in ("loose", "medium", "strict") else "medium"
 
     thread = threading.Thread(
         target=_run_collection_in_background,
-        args=(project_id, current_user.id, sources),
+        args=(project_id, current_user.id, max_results, match_level),
         daemon=True,
     )
     thread.start()
 
     return CollectResponse(
-        message=f"Collection started for {len(keywords)} keywords x {len(sources)} sources",
+        message=f"Collection started for {len(keywords)} keywords",
         status="running",
     )
 

@@ -2,20 +2,20 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models.models import EmailLog, DmLog, Project, Prospect, User
+from app.models.models import Project, Prospect, User
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 
 class ProjectCreate(BaseModel):
-    name: str
-    description: Optional[str] = None
+    name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = Field(default=None, max_length=2000)
 
 
 class ProjectResponse(BaseModel):

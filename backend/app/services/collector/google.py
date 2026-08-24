@@ -1,158 +1,111 @@
 import logging
-import re
+import random
 import time
-from typing import Optional
 from urllib.parse import quote_plus, urlparse
 
-import httpx
-from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright
+from app.services.collector.extract import deep_extract_email, keyword_matches
 
 logger = logging.getLogger(__name__)
-
-EMAIL_REGEX = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
-PHONE_REGEX = re.compile(r"0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}")
-
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
-}
 
 SKIP_DOMAINS = {
     "google.com", "google.co.kr", "youtube.com", "facebook.com",
     "twitter.com", "instagram.com", "naver.com", "daum.net",
-    "wikipedia.org", "tistory.com", "blog.naver.com",
+    "wikipedia.org", "tistory.com", "blog.naver.com", "linkedin.com",
 }
 
-MAX_RETRIES = 2
-BACKOFF_SECONDS = [2, 4]
+USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
 
 
-def _request_with_retry(client: httpx.Client, url: str, context: str = "") -> Optional[httpx.Response]:
-    """
-    Make an HTTP GET request with retry logic.
-    - Retries up to 2 times with exponential backoff (2s, 4s).
-    - On 403/429: sleep 5s and retry once.
-    - On 404: skip silently, return None.
-    - On timeout: log warning, return None.
-    """
-    for attempt in range(MAX_RETRIES + 1):
-        try:
-            resp = client.get(url)
-
-            if resp.status_code == 404:
-                return None
-
-            if resp.status_code in (403, 429):
-                logger.warning(f"[{context}] HTTP {resp.status_code} (rate limited/blocked) for {url}")
-                if attempt == 0:
-                    time.sleep(5)
-                    continue
-                return None
-
-            if resp.status_code != 200:
-                logger.warning(f"[{context}] HTTP {resp.status_code} for {url}")
-                if attempt < MAX_RETRIES:
-                    time.sleep(BACKOFF_SECONDS[attempt])
-                    continue
-                return None
-
-            return resp
-
-        except httpx.TimeoutException:
-            logger.warning(f"[{context}] Connection timeout for {url} (attempt {attempt + 1}/{MAX_RETRIES + 1})")
-            if attempt < MAX_RETRIES:
-                time.sleep(BACKOFF_SECONDS[attempt])
-                continue
-            return None
-
-        except httpx.ConnectError as e:
-            logger.warning(f"[{context}] Connection error for {url}: {e} (attempt {attempt + 1}/{MAX_RETRIES + 1})")
-            if attempt < MAX_RETRIES:
-                time.sleep(BACKOFF_SECONDS[attempt])
-                continue
-            return None
-
-        except Exception as e:
-            logger.error(f"[{context}] Unexpected error requesting {url}: {e}")
-            if attempt < MAX_RETRIES:
-                time.sleep(BACKOFF_SECONDS[attempt])
-                continue
-            return None
-
-    return None
+def _random_delay(min_sec: float = 1.0, max_sec: float = 3.0):
+    """Sleep for a random duration between min_sec and max_sec."""
+    time.sleep(random.uniform(min_sec, max_sec))
 
 
-def search_google(keyword: str, max_results: int = 15) -> list[dict]:
-    """Search Google for businesses matching the keyword and extract contacts."""
+def search_google(keyword: str, max_results: int = 15, match_level: str = "medium") -> list[dict]:
+    """Search Google for businesses matching the keyword and extract contacts using Playwright."""
     prospects = []
     encoded = quote_plus(keyword)
-    url = f"https://www.google.com/search?q={encoded}&hl=ko&num=20"
+    search_url = f"https://www.google.com/search?q={encoded}&hl=ko&num=20"
 
     try:
-        with httpx.Client(headers=HEADERS, follow_redirects=True, timeout=15) as client:
-            resp = _request_with_retry(client, url, context="google/search")
-            if resp is None:
-                logger.warning(f"[google/search] Failed to get search results for '{keyword}'")
-                return prospects
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(
+                user_agent=USER_AGENT,
+                locale="ko-KR",
+                viewport={"width": 1280, "height": 800},
+            )
+            page = context.new_page()
 
-            soup = BeautifulSoup(resp.text, "html.parser")
+            # Navigate to Google search
+            page.goto(search_url, timeout=20000, wait_until="domcontentloaded")
+            page.wait_for_timeout(2000)
 
-            # Extract links from search results
-            seen_urls = set()
-            for a_tag in soup.select("a[href]"):
-                href = a_tag.get("href", "")
-                if href.startswith("/url?q="):
-                    actual_url = href.split("/url?q=")[1].split("&")[0]
-                    if actual_url.startswith("http"):
-                        parsed = urlparse(actual_url)
-                        if not any(skip in parsed.netloc for skip in SKIP_DOMAINS):
-                            seen_urls.add(actual_url)
-                elif href.startswith("http"):
-                    parsed = urlparse(href)
-                    if not any(skip in parsed.netloc for skip in SKIP_DOMAINS):
-                        seen_urls.add(href)
+            # Extract search result links, filtering out Google internal and skip domains
+            skip_list = list(SKIP_DOMAINS)
+            links = page.evaluate(
+                """(skipDomains) => {
+                    const results = new Set();
+                    document.querySelectorAll('a[href]').forEach(a => {
+                        let href = a.href;
+                        // Handle Google redirect URLs
+                        if (href.includes('/url?q=')) {
+                            try {
+                                const url = new URL(href);
+                                href = url.searchParams.get('q') || href;
+                            } catch(e) {}
+                        }
+                        if (!href.startsWith('http')) return;
+                        try {
+                            const hostname = new URL(href).hostname;
+                            const dominated = skipDomains.some(d => hostname.includes(d));
+                            if (!dominated) results.add(href);
+                        } catch(e) {}
+                    });
+                    return [...results];
+                }""",
+                skip_list,
+            )
 
-            # Visit each URL to extract contacts
-            for site_url in list(seen_urls)[:max_results]:
+            seen_urls = list(dict.fromkeys(links))[:max_results]
+
+            # Visit each URL to deep-extract contacts
+            for site_url in seen_urls:
+                if len(prospects) >= max_results:
+                    break
                 try:
-                    with httpx.Client(headers=HEADERS, follow_redirects=True, timeout=10) as visit_client:
-                        page_resp = _request_with_retry(visit_client, site_url, context="google/visit")
-                        if page_resp is None:
+                    email, phone, name, insta = deep_extract_email(page, site_url)
+
+                    if email or insta:
+                        try:
+                            page_title = page.title() or ""
+                            page_text = page.text_content("body") or ""
+                        except Exception:
+                            page_title, page_text = "", ""
+                        if not keyword_matches(page_title, page_text, keyword, match_level):
+                            logger.info(f"[google] {site_url} 키워드 불일치 ({match_level}) — 스킵")
                             continue
 
-                        text = page_resp.text
-                        emails = list(set(EMAIL_REGEX.findall(text)))
-                        phones = list(set(PHONE_REGEX.findall(text)))
+                        prospects.append({
+                            "name": name or urlparse(site_url).netloc,
+                            "website": site_url,
+                            "email": email,
+                            "phone": phone,
+                            "instagram": insta,
+                            "source": "google",
+                            "category": keyword,
+                        })
 
-                        # Filter out common non-business emails
-                        emails = [
-                            e for e in emails
-                            if not any(
-                                d in e.lower()
-                                for d in ["example.com", "test.com", "naver.com", "google.com"]
-                            ) and len(e) < 100
-                        ]
-
-                        if emails or phones:
-                            domain = urlparse(site_url).netloc
-                            prospect = {
-                                "name": domain,
-                                "website": site_url,
-                                "email": emails[0] if emails else None,
-                                "phone": phones[0] if phones else None,
-                                "source": "google",
-                                "category": keyword,
-                            }
-                            prospects.append(prospect)
-
-                    time.sleep(1.5)  # Rate limiting for Google
+                    _random_delay(0.5, 1.5)
                 except Exception as e:
                     logger.error(f"[google/visit] Error processing {site_url}: {e}")
                     continue
+
+            browser.close()
 
     except Exception as e:
         logger.error(f"[google/search] Search error for '{keyword}': {e}")

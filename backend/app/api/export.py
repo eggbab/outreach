@@ -56,8 +56,11 @@ def export_prospects_csv(
     output.seek(0)
     filename = f"{project.name}_prospects.csv"
 
+    from urllib.parse import quote
+    encoded_filename = quote(filename)
+
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"},
     )

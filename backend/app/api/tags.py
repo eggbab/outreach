@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models.models import Prospect, ProspectTag, Tag, User
+from app.models.models import ProspectTag, Tag, User
 
 router = APIRouter(prefix="/api/tags", tags=["tags"])
 

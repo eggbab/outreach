@@ -1,7 +1,6 @@
-from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -40,11 +39,14 @@ def get_dm_queue(
     current_user: User = Depends(get_current_user),
 ):
     """Get DM targets for chrome extension - approved prospects with instagram, not yet DM'd."""
-    # Subquery: prospect IDs that already have successful DM logs
-    dm_sent_ids = (
-        db.query(DmLog.prospect_id)
-        .filter(DmLog.user_id == current_user.id, DmLog.status == "success")
-        .subquery()
+    # 크레딧 부족이면 빈 큐 — 확장이 발송 시도 안 함
+    from app.core.plans import check_credits
+    if not check_credits(db, current_user.id, "dm", 1)["allowed"]:
+        return DmQueueResponse(targets=[], total=0)
+
+    from sqlalchemy import select
+    dm_sent_ids = select(DmLog.prospect_id).where(
+        DmLog.user_id == current_user.id, DmLog.status == "success"
     )
 
     prospects = (
@@ -54,7 +56,7 @@ def get_dm_queue(
             Prospect.status.in_(["approved", "email_sent"]),
             Prospect.instagram.isnot(None),
             Prospect.instagram != "",
-            ~Prospect.id.in_(db.query(dm_sent_ids.c.prospect_id)),
+            ~Prospect.id.in_(dm_sent_ids),
         )
         .order_by(Prospect.collected_at)
         .limit(limit)
@@ -78,7 +80,7 @@ def get_dm_queue(
             Prospect.status.in_(["approved", "email_sent"]),
             Prospect.instagram.isnot(None),
             Prospect.instagram != "",
-            ~Prospect.id.in_(db.query(dm_sent_ids.c.prospect_id)),
+            ~Prospect.id.in_(dm_sent_ids),
         )
         .count()
     )
@@ -115,6 +117,13 @@ def report_dm_result(
 
     if req.status == "success":
         prospect.status = "dm_sent"
+        # 크레딧 차감 (DM 1건 = 3 크레딧). 잔액 부족이면 더 이상 발송 못하게 차감.
+        from app.core.plans import CREDIT_COSTS, deduct_credits, check_credits
+        if check_credits(db, current_user.id, "dm", 1)["allowed"]:
+            deduct_credits(db, current_user.id, CREDIT_COSTS["dm"], f"DM 발송: @{prospect.instagram}")
+        else:
+            # 크레딧 부족 — 로그 남겨두되 사용자에게 충전 안내가 가도록
+            log.error_message = (log.error_message or "") + " (warning: credits exhausted)"
 
     db.commit()
     return {"message": "DM result recorded", "status": req.status}

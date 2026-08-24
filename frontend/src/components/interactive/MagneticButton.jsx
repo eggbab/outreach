@@ -23,7 +23,7 @@ export default function MagneticButton({ children, className = '', strength = 0.
   }
 
   return (
-    <button
+    <span
       ref={ref}
       className={className}
       onMouseMove={handleMouseMove}
@@ -35,6 +35,6 @@ export default function MagneticButton({ children, className = '', strength = 0.
       {...props}
     >
       {children}
-    </button>
+    </span>
   )
 }

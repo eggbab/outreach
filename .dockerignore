@@ -1,6 +1,13 @@
-node_modules
-venv
-__pycache__
+# 중첩 경로까지 매치되도록 **/ 패턴 사용 — COPY backend/ ./ 시 시크릿/DB 유출 방지
+**/node_modules
+**/venv
+**/__pycache__
 .git
-*.db
-.env
+**/*.db
+**/.env
+**/.env.*
+!**/.env.example
+**/dist
+**/*.pyc
+**/.pytest_cache
+**/insta_sessions

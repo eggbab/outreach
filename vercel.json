@@ -4,7 +4,7 @@
   "installCommand": "cd frontend && npm install",
   "framework": "vite",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index.py" },
+    { "source": "/api/:path*", "destination": "https://API_HOST_PLACEHOLDER/api/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

@@ -96,7 +96,7 @@ async function handleDmResult(result) {
 async function updateBadge() {
   try {
     const queue = await fetchDmQueue();
-    const count = queue.queue_size ?? queue.targets?.length ?? 0;
+    const count = queue.total ?? queue.targets?.length ?? 0;
     const text = count > 0 ? String(count) : '';
     chrome.action.setBadgeText({ text });
     chrome.action.setBadgeBackgroundColor({ color: '#2563eb' });
@@ -135,7 +135,9 @@ async function apiWithAuth(method, path, body = null) {
 }
 
 async function fetchDmQueue() {
-  return apiWithAuth('GET', '/api/chrome/dm-queue');
+  const data = await chrome.storage.local.get('currentProjectId');
+  if (!data.currentProjectId) return { targets: [], total: 0 };
+  return apiWithAuth('GET', `/api/chrome/dm-queue?project_id=${data.currentProjectId}`);
 }
 
 // --- 확장 설치 시 ---

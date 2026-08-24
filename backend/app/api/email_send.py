@@ -3,17 +3,14 @@ import threading
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 
-limiter = Limiter(key_func=get_remote_address)
-
+from app.core.rate_limit import limiter
 from app.core.database import get_db, SessionLocal
 from app.core.security import decrypt_value, get_current_user
-from app.models.models import EmailLog, EmailSendJob, Prospect, Project, User, UserSettings
+from app.models.models import EmailLog, EmailSendJob, GlobalProspect, Prospect, Project, User, UserSettings
 from app.services.sender.email import send_email, send_bulk_emails, make_default_email_html
 
 logger = logging.getLogger(__name__)
@@ -38,8 +35,23 @@ class SendStatusResponse(BaseModel):
     error: Optional[str] = None
 
 
+class StartEmailRequest(BaseModel):
+    scheduled_at: Optional[datetime] = None
+
+
 class TestEmailRequest(BaseModel):
     to_email: Optional[str] = None
+
+
+class PreviewEmailRequest(BaseModel):
+    prospect_id: int
+
+
+class PreviewEmailResponse(BaseModel):
+    subject: str
+    html_body: str
+    to_email: str
+    from_email: str
 
 
 class EmailLogResponse(BaseModel):
@@ -94,22 +106,81 @@ def _run_email_sending_in_background(project_id: int, user_id: int):
 
         if settings and project and prospects and job:
             gmail_pw = decrypt_value(settings.gmail_app_password_encrypted)
+            user = db.query(User).filter(User.id == user_id).first()
+            sender_name = user.name if user else settings.gmail_email.split("@")[0]
+
+            # 워밍업 강제: 계정 나이 기반 안전 한도로 캡 + 오늘 이미 보낸 건수 차감
+            from datetime import timezone as tz
+            from sqlalchemy import func as sa_func
+            from app.core.plans import get_enforced_daily_limit
+
+            created = user.created_at if user else None
+            if created and created.tzinfo is None:
+                created = created.replace(tzinfo=tz.utc)
+            account_age = (datetime.now(tz.utc) - created).days if created else 0
+            enforced_limit = get_enforced_daily_limit("email", account_age, settings.daily_email_limit)
+
+            today_start = datetime.now(tz.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+            sent_today = (
+                db.query(sa_func.count(EmailLog.id))
+                .filter(
+                    EmailLog.user_id == user_id,
+                    EmailLog.status == "success",
+                    EmailLog.sent_at >= today_start.replace(tzinfo=None),
+                )
+                .scalar()
+                or 0
+            )
+            remaining_today = max(0, enforced_limit - sent_today)
+            if remaining_today == 0:
+                job.status = "completed"
+                job.error = (
+                    f"오늘의 안전 발송 한도({enforced_limit}건)에 도달했습니다. "
+                    "내일 다시 시도하세요. (계정 보호를 위한 워밍업/안전 한도)"
+                )
+                job.completed_at = datetime.now(timezone.utc)
+                db.commit()
+                return
+
             result = send_bulk_emails(
                 db=db,
                 gmail_email=settings.gmail_email,
                 gmail_app_password=gmail_pw,
                 prospects=prospects,
                 user_id=user_id,
-                sender_name=settings.gmail_email.split("@")[0],
+                sender_name=sender_name,
                 email_template=settings.email_template,
-                daily_limit=settings.daily_email_limit,
+                email_subject=settings.email_subject,
+                daily_limit=remaining_today,
                 job=job,
+                ad_prefix_enabled=settings.ad_prefix_enabled,
+                sender_info=settings.sender_info,
             )
             job.status = "completed"
             job.sent_count = result["sent"]
             job.failed_count = result["failed"]
             job.current_email = None
             job.completed_at = datetime.now(timezone.utc)
+            # Update GlobalProspect.times_emailed for successfully sent emails only
+            if result["sent"] > 0:
+                sent_logs = (
+                    db.query(EmailLog.prospect_id)
+                    .join(Prospect, EmailLog.prospect_id == Prospect.id)
+                    .filter(
+                        Prospect.project_id == project_id,
+                        EmailLog.user_id == user_id,
+                        EmailLog.status == "success",
+                        Prospect.global_prospect_id.isnot(None),
+                    )
+                    .distinct()
+                    .all()
+                )
+                sent_prospect_ids = {row[0] for row in sent_logs}
+                for p in prospects:
+                    if p.id in sent_prospect_ids and p.global_prospect_id:
+                        gp = db.query(GlobalProspect).filter(GlobalProspect.id == p.global_prospect_id).first()
+                        if gp:
+                            gp.times_emailed += 1
             db.commit()
     except Exception as e:
         logger.error(f"Email sending failed: {e}")
@@ -122,28 +193,67 @@ def _run_email_sending_in_background(project_id: int, user_id: int):
         db.close()
 
 
+@router.post("/send-email/preview", response_model=PreviewEmailResponse)
+def preview_email(
+    project_id: int,
+    req: PreviewEmailRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Preview email with prospect data filled in."""
+    _get_project_or_404(project_id, current_user.id, db)
+    settings = _get_user_settings_or_error(current_user.id, db)
+
+    prospect = (
+        db.query(Prospect)
+        .filter(Prospect.id == req.prospect_id, Prospect.project_id == project_id)
+        .first()
+    )
+    if not prospect:
+        raise HTTPException(status_code=404, detail="잠재고객을 찾을 수 없습니다.")
+
+    from app.services.sender.email import render_template
+    company_name = prospect.name or "고객"
+    category = prospect.category or "귀사 업종"
+
+    html_body = make_default_email_html(
+        company_name=company_name,
+        category=category,
+        sender_name=current_user.name,
+        custom_template=settings.email_template,
+    )
+
+    raw_subject = settings.email_subject or "안녕하세요, {company_name}님께 제안 드립니다"
+    subject = render_template(raw_subject, company_name, category, current_user.name)
+
+    return PreviewEmailResponse(
+        subject=subject,
+        html_body=html_body,
+        to_email=prospect.email or "",
+        from_email=settings.gmail_email,
+    )
+
+
 @router.post("/send-email", response_model=SendEmailResponse)
 @limiter.limit("3/minute")
 def start_email_sending(
     request: Request,
     project_id: int,
+    req: StartEmailRequest = StartEmailRequest(),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     _get_project_or_404(project_id, current_user.id, db)
     _get_user_settings_or_error(current_user.id, db)
 
-    # Check usage limit
-    from app.core.plans import check_usage_limit, deduct_credits
-    usage_check = check_usage_limit(db, current_user.id, current_user.plan, "daily_emails")
-    if not usage_check["allowed"]:
-        if usage_check.get("reason") == "free_limit":
-            raise HTTPException(status_code=429, detail="무료 플랜의 일일 이메일 한도에 도달했습니다. 유료 플랜으로 업그레이드해주세요.")
-        else:
-            raise HTTPException(status_code=429, detail=f"일일 이메일 한도 초과. 크레딧이 부족합니다. (필요: {usage_check.get('credits_needed', 0)} 크레딧)")
-    if not usage_check.get("within_plan", True):
-        deduct_credits(db, current_user.id, usage_check["credits_needed"], "이메일 한도 초과 — 건당 과금")
-        db.commit()
+    # 크레딧 사전 확인 — 1건 보낼 만큼은 있어야 시작 가능
+    # (실제 차감은 send_bulk_emails 안에서 매 건 발송 성공 시 진행)
+    from app.core.plans import check_credits
+    if not check_credits(db, current_user.id, "email", 1)["allowed"]:
+        raise HTTPException(
+            status_code=402,
+            detail=f"크레딧이 부족합니다. 충전 후 다시 시도하세요. (이메일 1건 = {2} 크레딧)",
+        )
 
     target_count = (
         db.query(Prospect)
@@ -160,6 +270,22 @@ def start_email_sending(
         raise HTTPException(
             status_code=400,
             detail="No approved prospects with email addresses found",
+        )
+
+    # If scheduled_at is provided, create a scheduled job
+    if req.scheduled_at:
+        job = EmailSendJob(
+            project_id=project_id,
+            user_id=current_user.id,
+            status="scheduled",
+            total_targets=target_count,
+            scheduled_at=req.scheduled_at,
+        )
+        db.add(job)
+        db.commit()
+        return SendEmailResponse(
+            message=f"Email sending scheduled for {target_count} prospects at {req.scheduled_at}",
+            target_count=target_count,
         )
 
     # Create job record

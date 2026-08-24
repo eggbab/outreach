@@ -1,9 +1,8 @@
 import secrets
-from datetime import datetime, time, timezone
+from datetime import datetime, time
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 

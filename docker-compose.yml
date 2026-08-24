@@ -1,16 +1,15 @@
 services:
-  backend:
-    build: ./backend
+  app:
+    build: .
     ports:
       - "8000:8000"
     env_file:
-      - backend/.env
+      - .env
+    environment:
+      - ENV=production
+    volumes:
+      - insta_sessions:/app/insta_sessions
     restart: unless-stopped
 
-  frontend:
-    build: ./frontend
-    ports:
-      - "80:80"
-    depends_on:
-      - backend
-    restart: unless-stopped
+volumes:
+  insta_sessions:

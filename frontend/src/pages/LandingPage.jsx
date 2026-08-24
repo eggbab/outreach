@@ -1,7 +1,7 @@
 import { lazy, Suspense, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
-import { ArrowRight, Mail, MessageCircle, BarChart3, Kanban, Phone, FileCheck, Calendar, Users, Key, Shield, Tag, Download } from 'lucide-react'
+import { ArrowRight, Mail, MessageCircle, BarChart3, Kanban, Phone, FileCheck, Calendar, Users, Key, Shield, Tag, Download, Check } from 'lucide-react'
 import Logo from '../components/Logo'
 import CursorGlow from '../components/interactive/CursorGlow'
 import RevealSection from '../components/interactive/RevealSection'
@@ -33,7 +33,7 @@ export default function LandingPage() {
           <div className="flex items-center gap-6 text-sm">
             <a href="#features" className="text-gray-500 hover:text-gray-900 transition-colors hidden sm:block">기능</a>
             <a href="#pipeline" className="text-gray-500 hover:text-gray-900 transition-colors hidden sm:block">CRM</a>
-            <a href="#pricing" className="text-gray-500 hover:text-gray-900 transition-colors hidden sm:block">요금제</a>
+            <a href="#pricing" className="text-gray-500 hover:text-gray-900 transition-colors hidden sm:block">이용 안내</a>
             {user ? (
               <Link to="/dashboard" className="text-gray-500 hover:text-gray-900 transition-colors">대시보드</Link>
             ) : (
@@ -55,7 +55,7 @@ export default function LandingPage() {
           <RevealSection delay={0}>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50/80 backdrop-blur text-blue-700 text-xs font-medium mb-8 border border-blue-100">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-              14일 Pro 무료 체험 — 카드 등록 없이 시작
+              서비스 키 발급 후 바로 사용 가능
             </div>
           </RevealSection>
 
@@ -84,7 +84,7 @@ export default function LandingPage() {
                   to="/signup"
                   className="inline-flex items-center gap-2 px-7 py-3.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20 hover:shadow-xl hover:shadow-blue-600/30 hover:-translate-y-0.5"
                 >
-                  무료로 시작하기 <ArrowRight className="w-4 h-4" />
+                  시작하기 <ArrowRight className="w-4 h-4" />
                 </Link>
               </MagneticButton>
               <a
@@ -484,50 +484,97 @@ export default function LandingPage() {
 
       {/* ─── Pricing ─── */}
       <section id="pricing" className="py-24 px-6 border-t border-gray-100 bg-gray-50/50">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-12">
-            <WordReveal text="요금제" className="text-3xl font-semibold mb-3" />
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-14">
+            <WordReveal text="이용 안내" className="text-3xl font-semibold mb-3" />
             <RevealSection delay={200}>
-              <p className="text-gray-500">14일 Pro 무료 체험. 카드 등록 없이 시작하세요.</p>
+              <p className="text-gray-500">쓴 만큼만 내세요. 가입 시 30 크레딧 무료 지급 (체험용).</p>
             </RevealSection>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+          {/* 크레딧 단가 */}
+          <RevealSection delay={100}>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-10">
+              {[
+                { action: '업체 수집', cost: '1', desc: '네이버 · 구글 · 지도 통합 검색' },
+                { action: '이메일 발송', cost: '2', desc: '발송 + 열람/클릭 추적 포함' },
+                { action: '인스타 DM', cost: '3', desc: '크롬 확장 자동 발송' },
+              ].map((item) => (
+                <div key={item.action} className="bg-white rounded-xl ring-1 ring-gray-200 p-6 text-center">
+                  <p className="text-sm font-medium text-gray-500 mb-2">{item.action}</p>
+                  <p className="text-3xl font-bold text-gray-900 mb-1">{item.cost} <span className="text-base font-normal text-gray-400">크레딧</span></p>
+                  <p className="text-xs text-gray-400">{item.desc}</p>
+                </div>
+              ))}
+            </div>
+          </RevealSection>
+
+          {/* 충전 패키지 */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-5 mb-10">
             {[
-              { name: '무료', price: '0', desc: '기능 체험용', features: ['프로젝트 1개', '이메일 3건/일', 'DM 2건/일'], highlight: false },
-              { name: '프로', price: '29,000', desc: '본격 영업 자동화', features: ['프로젝트 10개', '이메일 100건/일', 'DM 30건/일', '시퀀스 + CRM', '초과 시 건당 과금'], highlight: true },
-              { name: '에이전시', price: '79,000', desc: '대규모 팀 운영', features: ['프로젝트 무제한', '이메일 500건/일', 'DM 100건/일', '팀 협업 + API', '우선 지원'], highlight: false },
-            ].map((plan, i) => (
-              <RevealSection key={plan.name} delay={i * 120}>
+              { name: '스탠다드 10,000 크레딧', price: '590,000', per: '59원/건',
+                example: '업체 4,000 + 이메일 2,000 + DM 666' },
+              { name: '프로 30,000 크레딧', price: '1,590,000', per: '53원/건', highlight: true, badge: '인기',
+                example: '업체 12,000 + 이메일 6,000 + DM 2,000' },
+              { name: '비즈니스 70,000 크레딧', price: '3,490,000', per: '49.8원/건',
+                example: '업체 28,000 + 이메일 14,000 + DM 4,666' },
+              { name: '엔터프라이즈 100,000 크레딧', price: '4,690,000', per: '46.9원/건', badge: '최저가',
+                example: '업체 40,000 + 이메일 20,000 + DM 6,666' },
+            ].map((pkg, i) => (
+              <RevealSection key={pkg.name} delay={i * 80} className="h-full">
                 <TiltCard
-                  className={`rounded-xl p-6 h-full ${plan.highlight ? 'bg-gray-900 text-white ring-1 ring-gray-900' : 'bg-white ring-1 ring-gray-200'}`}
-                  glowColor={plan.highlight ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.08)'}
+                  className={`rounded-2xl p-6 h-full relative flex flex-col ${pkg.highlight ? 'bg-gray-900 text-white ring-2 ring-gray-900' : 'bg-white ring-1 ring-gray-200'}`}
+                  glowColor={pkg.highlight ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.08)'}
                 >
-                  <p className={`text-sm font-medium mb-4 relative z-20 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>{plan.name}</p>
+                  {pkg.badge && (
+                    <span className={`absolute -top-2.5 left-1/2 -translate-x-1/2 px-3 py-0.5 text-xs font-semibold rounded-full shadow-lg ${pkg.highlight ? 'bg-blue-600 text-white shadow-blue-600/25' : 'bg-gray-900 text-white'}`}>{pkg.badge}</span>
+                  )}
+                  <p className={`text-sm font-semibold mb-3 relative z-20 ${pkg.highlight ? 'text-gray-400' : 'text-gray-500'}`}>{pkg.name}</p>
                   <p className="mb-1 relative z-20">
-                    <span className={`text-3xl font-semibold ${plan.highlight ? 'text-white' : 'text-gray-900'}`}>
-                      {plan.price === '0' ? '무료' : `${plan.price}원`}
-                    </span>
-                    {plan.price !== '0' && <span className={`text-sm ml-1 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>/월</span>}
+                    <span className={`text-3xl font-bold tracking-tight ${pkg.highlight ? 'text-white' : 'text-gray-900'}`}>{pkg.price}</span>
+                    <span className={`text-sm ml-1 ${pkg.highlight ? 'text-gray-400' : 'text-gray-500'}`}>원</span>
                   </p>
-                  <p className={`text-sm mb-6 relative z-20 ${plan.highlight ? 'text-gray-400' : 'text-gray-500'}`}>{plan.desc}</p>
-                  <MagneticButton strength={0.15} className="w-full">
-                    <Link to="/signup" className={`block w-full py-2.5 rounded-md text-sm font-medium text-center transition-all relative z-20 ${
-                      plan.highlight ? 'bg-white text-gray-900 hover:bg-gray-100' : 'bg-gray-900 text-white hover:bg-gray-800'
+                  <p className={`text-xs mb-3 relative z-20 ${pkg.highlight ? 'text-gray-400' : 'text-gray-500'}`}>{pkg.per}</p>
+                  {pkg.example && (
+                    <div className={`text-[11px] mb-5 leading-relaxed relative z-20 px-3 py-2 rounded-lg ${pkg.highlight ? 'bg-white/5 text-gray-300' : 'bg-gray-50 text-gray-600'}`}>
+                      <div className="font-semibold mb-0.5">활용 예시</div>
+                      {pkg.example}
+                    </div>
+                  )}
+                  <MagneticButton strength={0.15} className="w-full mt-auto">
+                    <Link to="/pricing" className={`block w-full py-2.5 rounded-lg text-sm font-semibold text-center relative z-20 ${
+                      pkg.highlight ? 'bg-white text-gray-900 hover:bg-gray-100' : 'bg-gray-900 text-white hover:bg-gray-800'
                     }`}>
-                      {plan.highlight ? '14일 무료 체험' : '시작하기'}
+                      구매하기
                     </Link>
                   </MagneticButton>
-                  <ul className="space-y-2.5 mt-6 relative z-20">
-                    {plan.features.map((f) => (
-                      <li key={f} className={`text-sm flex items-center gap-2 ${plan.highlight ? 'text-gray-300' : 'text-gray-600'}`}>
-                        <span className={`w-1 h-1 rounded-full ${plan.highlight ? 'bg-gray-500' : 'bg-gray-300'}`} />{f}
-                      </li>
-                    ))}
-                  </ul>
                 </TiltCard>
               </RevealSection>
             ))}
           </div>
+
+          {/* 포함 기능 */}
+          <RevealSection delay={400}>
+            <div className="bg-white rounded-2xl ring-1 ring-gray-200 p-8">
+              <p className="text-sm font-semibold text-gray-900 mb-5">모든 계정에 포함</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3">
+                {[
+                  '가입 시 30 크레딧 무료',
+                  '모든 수집 소스 사용',
+                  '이메일 · DM 발송',
+                  '열람/클릭 추적',
+                  'CRM 파이프라인',
+                  '블랙리스트 · 중복 방지',
+                  '발송 안전 가이드',
+                  'CSV 내보내기',
+                ].map((f) => (
+                  <p key={f} className="text-sm text-gray-600 flex items-center gap-2">
+                    <Check className="w-4 h-4 text-blue-500 shrink-0" />{f}
+                  </p>
+                ))}
+              </div>
+            </div>
+          </RevealSection>
         </div>
       </section>
 
@@ -545,10 +592,9 @@ export default function LandingPage() {
           <RevealSection delay={500}>
             <MagneticButton strength={0.25}>
               <Link to="/signup" className="inline-flex items-center gap-2 px-7 py-3.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20 hover:shadow-xl hover:shadow-blue-600/30 hover:-translate-y-0.5">
-                14일 무료로 시작하기 <ArrowRight className="w-4 h-4" />
+                시작하기 <ArrowRight className="w-4 h-4" />
               </Link>
             </MagneticButton>
-            <p className="text-xs text-gray-400 mt-4">카드 등록 없이 · Pro 플랜 14일 체험 · 언제든 해지</p>
           </RevealSection>
         </div>
       </section>
@@ -609,10 +655,9 @@ export default function LandingPage() {
               <h4 className="text-white text-xs font-semibold uppercase tracking-wider mb-4">회사</h4>
               <ul className="space-y-2.5">
                 {[
-                  { label: '요금제', href: '#pricing' },
-                  { label: '블로그', href: '#' },
-                  { label: '이용약관', href: '#' },
-                  { label: '개인정보처리방침', href: '#' },
+                  { label: '이용 안내', href: '#pricing' },
+                  { label: '이용약관', href: '/terms' },
+                  { label: '개인정보처리방침', href: '/privacy' },
                 ].map((item) => (
                   <li key={item.label}>
                     <a href={item.href} className="text-sm hover:text-white transition-colors">{item.label}</a>
@@ -668,7 +713,7 @@ export default function LandingPage() {
             </p>
             <div className="flex items-center gap-4">
               <Link to="/login" className="text-xs hover:text-white transition-colors">로그인</Link>
-              <Link to="/signup" className="text-xs text-blue-500 hover:text-blue-400 transition-colors font-medium">무료로 시작하기</Link>
+              <Link to="/signup" className="text-xs text-blue-500 hover:text-blue-400 transition-colors font-medium">시작하기</Link>
             </div>
           </div>
         </div>

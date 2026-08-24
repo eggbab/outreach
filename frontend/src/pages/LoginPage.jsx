@@ -59,23 +59,27 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">이메일</label>
+              <label htmlFor="login-email" className="block text-sm font-medium text-gray-700 mb-1">이메일</label>
               <input
+                id="login-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                autoComplete="email"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 placeholder="email@example.com"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">비밀번호</label>
+              <label htmlFor="login-password" className="block text-sm font-medium text-gray-700 mb-1">비밀번호</label>
               <input
+                id="login-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                autoComplete="current-password"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 placeholder="비밀번호 입력"
               />
@@ -89,7 +93,13 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <p className="mt-6 text-center text-sm text-gray-500">
+          <div className="mt-4 text-center">
+            <Link to="/forgot-password" className="text-sm text-gray-500 hover:text-blue-600">
+              비밀번호를 잊으셨나요?
+            </Link>
+          </div>
+
+          <p className="mt-4 text-center text-sm text-gray-500">
             계정이 없으신가요?{' '}
             <Link to="/signup" className="text-blue-600 hover:underline font-medium">
               회원가입

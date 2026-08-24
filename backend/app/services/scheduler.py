@@ -104,8 +104,30 @@ def process_sequences():
                         enrollment.status = "completed"
                         continue
 
+            # 답장한 잠재고객에게는 후속 메일 중단 (딜 보호)
+            if prospect.status == "replied":
+                enrollment.status = "stopped"
+                continue
+
             settings = db.query(UserSettings).filter(UserSettings.user_id == sequence.user_id).first()
             if not settings or not settings.gmail_email or not settings.gmail_app_password_encrypted:
+                continue
+
+            # 수신거부/블랙리스트 차단
+            from app.services.compliance import (
+                apply_ad_prefix,
+                build_compliance_footer,
+                build_list_unsubscribe_headers,
+                inject_compliance_footer,
+                is_email_suppressed,
+            )
+            if is_email_suppressed(db, sequence.user_id, prospect.email):
+                enrollment.status = "stopped"
+                continue
+
+            # 크레딧 확인 — 부족하면 이번 턴은 건너뜀 (다음 폴링에서 재시도)
+            from app.core.plans import CREDIT_COSTS, check_credits, deduct_credits
+            if not check_credits(db, sequence.user_id, "email", 1)["allowed"]:
                 continue
 
             try:
@@ -116,12 +138,25 @@ def process_sequences():
                 import secrets
                 tracking_id = secrets.token_hex(16)
 
+                # 컴플라이언스: (광고) 표기 + 전송자 정보/수신거부 푸터 + 추적 픽셀
+                from app.core.config import settings as app_settings
+                subject = apply_ad_prefix(subject, settings.ad_prefix_enabled)
+                body = inject_compliance_footer(
+                    body, build_compliance_footer(tracking_id, settings.sender_info)
+                )
+                pixel = (
+                    f'<img src="{app_settings.BASE_URL}/api/t/open/{tracking_id}" '
+                    f'width="1" height="1" style="display:none">'
+                )
+                body = body.replace("</body>", f"{pixel}\n</body>", 1) if "</body>" in body else body + pixel
+
                 success = send_email(
                     gmail_email=settings.gmail_email,
                     gmail_app_password=gmail_pw,
                     to_email=prospect.email,
                     subject=subject,
                     html_body=body,
+                    extra_headers=build_list_unsubscribe_headers(tracking_id),
                 )
 
                 log = EmailLog(
@@ -132,6 +167,12 @@ def process_sequences():
                     sequence_step_id=step.id,
                 )
                 db.add(log)
+
+                if success:
+                    deduct_credits(
+                        db, sequence.user_id, CREDIT_COSTS["email"],
+                        f"시퀀스 이메일 발송: {prospect.email}",
+                    )
 
                 enrollment.last_step_sent_at = now
 
@@ -160,10 +201,84 @@ def process_sequences():
         db.close()
 
 
+def compute_benchmarks_job():
+    """Compute industry benchmarks from email performance data."""
+    db = SessionLocal()
+    try:
+        from app.services.benchmark import compute_benchmarks
+        compute_benchmarks(db)
+        db.commit()
+    except Exception as e:
+        logger.error(f"Error in compute_benchmarks job: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+def compute_keyword_performances_job():
+    """Compute keyword ROI metrics."""
+    db = SessionLocal()
+    try:
+        from app.services.roi import compute_keyword_performances
+        compute_keyword_performances(db)
+        db.commit()
+    except Exception as e:
+        logger.error(f"Error in compute_keyword_performances job: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+def process_replies():
+    """Gmail IMAP으로 답장을 감지해 잠재고객 상태 갱신 + 시퀀스 중단."""
+    db = SessionLocal()
+    try:
+        from app.services.reply_detector import detect_replies_all_users
+        detect_replies_all_users(db)
+    except Exception as e:
+        logger.error(f"Error in process_replies job: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+def process_scheduled_emails():
+    """Check for scheduled email sends and trigger them when due."""
+    db = SessionLocal()
+    try:
+        from app.models.models import EmailSendJob
+        now = datetime.now(timezone.utc)
+        jobs = db.query(EmailSendJob).filter(
+            EmailSendJob.status == "scheduled",
+            EmailSendJob.scheduled_at <= now,
+        ).all()
+        for job in jobs:
+            job.status = "running"
+            db.commit()
+            # Trigger email sending in background thread
+            import threading
+            from app.api.email_send import _run_email_sending_in_background
+            thread = threading.Thread(
+                target=_run_email_sending_in_background,
+                args=(job.project_id, job.user_id),
+                daemon=True,
+            )
+            thread.start()
+    except Exception as e:
+        logger.error(f"Error in process_scheduled_emails: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 def start_scheduler():
     """Start the background scheduler."""
     scheduler.add_job(expire_trials, "cron", hour=0, minute=5, id="expire_trials", replace_existing=True)
     scheduler.add_job(process_sequences, "interval", minutes=15, id="process_sequences", replace_existing=True)
+    scheduler.add_job(compute_benchmarks_job, "cron", hour=3, minute=0, id="compute_benchmarks", replace_existing=True)
+    scheduler.add_job(compute_keyword_performances_job, "interval", hours=1, id="compute_keyword_perf", replace_existing=True)
+    scheduler.add_job(process_scheduled_emails, "interval", minutes=1, id="process_scheduled_emails", replace_existing=True)
+    scheduler.add_job(process_replies, "interval", minutes=15, id="process_replies", replace_existing=True)
     scheduler.start()
     logger.info("Background scheduler started")
 

@@ -23,6 +23,14 @@ const MeetingsPage = lazy(() => import('./pages/MeetingsPage'))
 const BookingPage = lazy(() => import('./pages/BookingPage'))
 const TeamPage = lazy(() => import('./pages/TeamPage'))
 const ApiKeysPage = lazy(() => import('./pages/ApiKeysPage'))
+const DiscoverPage = lazy(() => import('./pages/DiscoverPage'))
+const BlacklistPage = lazy(() => import('./pages/BlacklistPage'))
+const AdminPage = lazy(() => import('./pages/AdminPage'))
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'))
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'))
+const TermsPage = lazy(() => import('./pages/TermsPage'))
+const PrivacyPage = lazy(() => import('./pages/PrivacyPage'))
+const ExtensionGuidePage = lazy(() => import('./pages/ExtensionGuidePage'))
 
 function PageLoader() {
   return (
@@ -59,6 +67,10 @@ function AppRoutes() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/book/:userId" element={<BookingPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/terms" element={<TermsPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
         {/* Protected routes */}
         <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
         <Route path="/projects/:id" element={<ProtectedRoute><ProjectDetailPage /></ProtectedRoute>} />
@@ -73,6 +85,10 @@ function AppRoutes() {
         <Route path="/meetings" element={<ProtectedRoute><MeetingsPage /></ProtectedRoute>} />
         <Route path="/teams" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
         <Route path="/api-keys" element={<ProtectedRoute><ApiKeysPage /></ProtectedRoute>} />
+        <Route path="/discover" element={<ProtectedRoute><DiscoverPage /></ProtectedRoute>} />
+        <Route path="/blacklist" element={<ProtectedRoute><BlacklistPage /></ProtectedRoute>} />
+        <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
+        <Route path="/extension" element={<ProtectedRoute><ExtensionGuidePage /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>

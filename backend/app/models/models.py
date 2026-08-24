@@ -45,6 +45,15 @@ class User(Base):
     plan_changed_at = Column(DateTime, nullable=True)
     # Credits for overage billing
     credits = Column(Integer, default=0, nullable=False)
+    # Service key & admin
+    is_admin = Column(Boolean, default=False, nullable=False)
+    service_key_id = Column(Integer, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    # Password reset
+    reset_token = Column(String(128), nullable=True, index=True)
+    reset_token_expires_at = Column(DateTime, nullable=True)
+    # Terms acceptance (한국 정보통신망법)
+    terms_accepted_at = Column(DateTime, nullable=True)
 
     created_at = Column(DateTime, default=utcnow, nullable=False)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
@@ -105,9 +114,12 @@ class Prospect(Base):
     category = Column(String(100), nullable=True)
     # Phase 2: score
     score = Column(Integer, default=0, nullable=False)
+    # Phase 6: global prospect + keyword linkage
+    global_prospect_id = Column(Integer, ForeignKey("global_prospects.id", ondelete="SET NULL"), nullable=True)
+    keyword_id = Column(Integer, ForeignKey("keywords.id", ondelete="SET NULL"), nullable=True)
     status = Column(
         Enum(
-            "collected", "approved", "rejected", "email_sent", "dm_sent",
+            "collected", "approved", "rejected", "email_sent", "dm_sent", "replied",
             name="prospect_status",
         ),
         default="collected",
@@ -138,6 +150,7 @@ class EmailLog(Base):
     tracking_id = Column(String(64), unique=True, nullable=True, index=True)
     opened_at = Column(DateTime, nullable=True)
     clicked_at = Column(DateTime, nullable=True)
+    replied_at = Column(DateTime, nullable=True)
     # Phase 3: A/B + sequence
     variant_id = Column(Integer, ForeignKey("email_variants.id", ondelete="SET NULL"), nullable=True)
     sequence_step_id = Column(Integer, ForeignKey("email_sequence_steps.id", ondelete="SET NULL"), nullable=True)
@@ -175,6 +188,7 @@ class EmailSendJob(Base):
     failed_count = Column(Integer, default=0)
     current_email = Column(String(255), nullable=True)
     error = Column(Text, nullable=True)
+    scheduled_at = Column(DateTime, nullable=True)  # None = send immediately
     started_at = Column(DateTime, default=utcnow, nullable=False)
     completed_at = Column(DateTime, nullable=True)
 
@@ -202,10 +216,15 @@ class UserSettings(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     gmail_email = Column(String(255), nullable=True)
     gmail_app_password_encrypted = Column(String(500), nullable=True)
+    email_subject = Column(String(200), nullable=True)
     email_template = Column(Text, nullable=True)
+    # 인스타 DM은 크롬 확장에서 사용자 본인 브라우저로 직접 발송 — 서버 자격증명 저장 안 함
     dm_template = Column(Text, nullable=True)
     daily_email_limit = Column(Integer, default=80, nullable=False)
     daily_dm_limit = Column(Integer, default=15, nullable=False)
+    # 정보통신망법 §50 컴플라이언스: (광고) 표기 + 전송자 정보/수신거부 푸터
+    ad_prefix_enabled = Column(Boolean, default=True, nullable=False)
+    sender_info = Column(Text, nullable=True)  # 회사명·주소·연락처 (푸터에 표기)
 
     __table_args__ = (UniqueConstraint("user_id", name="uq_user_settings_user_id"),)
 
@@ -235,7 +254,7 @@ class Subscription(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
     plan = Column(
-        Enum("free", "pro", "agency", name="subscription_plan"),
+        Enum("free", "personal", "pro", "agency", name="subscription_plan"),
         default="free",
         nullable=False,
     )
@@ -257,8 +276,30 @@ class CreditTransaction(Base):
     amount = Column(Integer, nullable=False)  # positive=charge, negative=deduct
     balance_after = Column(Integer, nullable=False)
     description = Column(String(300), nullable=False)
-    tx_type = Column(String(20), nullable=False)  # purchase, deduct, bonus, refund
+    tx_type = Column(String(20), nullable=False)  # purchase, deduct, bonus, refund, admin_grant
     created_at = Column(DateTime, default=utcnow, nullable=False)
+
+
+class PaymentRequest(Base):
+    """계좌이체 결제 요청 — 사용자가 입금하고 알림, 관리자가 승인 시 크레딧 충전."""
+    __tablename__ = "payment_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    package_id = Column(String(50), nullable=False)
+    package_label = Column(String(100), nullable=False)
+    credits = Column(Integer, nullable=False)
+    amount = Column(Integer, nullable=False)        # 원
+    depositor_name = Column(String(100), nullable=False)  # 입금자명 (사장님이 통장에서 확인)
+    memo = Column(String(500), nullable=True)       # 사용자 메모
+    status = Column(
+        Enum("pending", "approved", "rejected", name="payment_request_status"),
+        default="pending", nullable=False, index=True,
+    )
+    rejection_reason = Column(String(500), nullable=True)
+    approved_by_admin_id = Column(Integer, nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utcnow, nullable=False, index=True)
 
 
 # ──────────────────────────────────────────────
@@ -378,7 +419,8 @@ class SequenceEnrollment(Base):
     prospect_id = Column(Integer, ForeignKey("prospects.id", ondelete="CASCADE"), nullable=False)
     current_step = Column(Integer, default=1, nullable=False)
     status = Column(
-        Enum("active", "completed", "paused", name="enrollment_status"),
+        # stopped: 답장/수신거부로 자동 중단 (재개 안 함)
+        Enum("active", "completed", "paused", "stopped", name="enrollment_status"),
         default="active",
         nullable=False,
     )
@@ -590,3 +632,127 @@ class ApiKey(Base):
     expires_at = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=utcnow, nullable=False)
+
+
+# ──────────────────────────────────────────────
+# Phase 6: Global Prospect Pool, Benchmarks, Keyword ROI
+# ──────────────────────────────────────────────
+
+class GlobalProspect(Base):
+    __tablename__ = "global_prospects"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_name = Column(String(200), nullable=True, index=True)
+    email = Column(String(255), nullable=True, index=True)
+    phone = Column(String(50), nullable=True)
+    instagram = Column(String(100), nullable=True)
+    website = Column(String(500), nullable=True)
+    source = Column(String(50), nullable=True)
+    category = Column(String(100), nullable=True, index=True)
+    industry = Column(String(100), nullable=True, index=True)
+    region = Column(String(100), nullable=True, index=True)
+    email_validity_score = Column(Float, default=0.0)
+    last_verified_at = Column(DateTime, nullable=True)
+    times_collected = Column(Integer, default=1)
+    times_emailed = Column(Integer, default=0)
+    times_opened = Column(Integer, default=0)
+    times_clicked = Column(Integer, default=0)
+    times_replied = Column(Integer, default=0)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class GlobalProspectContribution(Base):
+    __tablename__ = "global_prospect_contributions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    global_prospect_id = Column(Integer, ForeignKey("global_prospects.id", ondelete="CASCADE"))
+    contributed_at = Column(DateTime, default=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "global_prospect_id", name="uq_contribution_user_gp"),
+    )
+
+
+class IndustryBenchmark(Base):
+    __tablename__ = "industry_benchmarks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    industry = Column(String(100), unique=True, index=True)
+    total_sent = Column(Integer, default=0)
+    total_opened = Column(Integer, default=0)
+    total_clicked = Column(Integer, default=0)
+    avg_open_rate = Column(Float, default=0.0)
+    avg_click_rate = Column(Float, default=0.0)
+    best_send_hour = Column(Integer, nullable=True)
+    best_send_day = Column(Integer, nullable=True)
+    sample_size = Column(Integer, default=0)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class KeywordPerformance(Base):
+    __tablename__ = "keyword_performances"
+
+    id = Column(Integer, primary_key=True, index=True)
+    keyword_id = Column(Integer, ForeignKey("keywords.id", ondelete="CASCADE"))
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    keyword_text = Column(String(200))
+    source = Column(String(50), nullable=True)
+    total_collected = Column(Integer, default=0)
+    total_emailed = Column(Integer, default=0)
+    total_opened = Column(Integer, default=0)
+    total_clicked = Column(Integer, default=0)
+    total_deals = Column(Integer, default=0)
+    total_deal_value = Column(Integer, default=0)
+    conversion_rate = Column(Float, default=0.0)
+    roi_score = Column(Float, default=0.0)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("keyword_id", "user_id", name="uq_keyword_perf_kw_user"),
+    )
+
+
+# ──────────────────────────────────────────────
+# Phase 6: Blacklist
+# ──────────────────────────────────────────────
+
+class ServiceKey(Base):
+    __tablename__ = "service_keys"
+
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String(64), unique=True, nullable=False, index=True)
+    memo = Column(String(200), nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    activated_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+    expires_at = Column(DateTime, nullable=True)
+    last_used_at = Column(DateTime, nullable=True)
+
+
+class Blacklist(Base):
+    __tablename__ = "blacklist"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    email = Column(String(255), nullable=True)
+    phone = Column(String(50), nullable=True)
+    instagram = Column(String(100), nullable=True)
+    company_name = Column(String(200), nullable=True)
+    reason = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
+
+class GlobalUnsubscribe(Base):
+    """전역 수신거부 풀 — 어떤 유저의 메일에서든 수신거부한 주소는 전체 서비스에서 발송 차단.
+
+    유저가 늘수록 서비스 전체의 스팸 신고율이 낮아지는 집단 방어 자산 (정보통신망법 §50).
+    """
+    __tablename__ = "global_unsubscribes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    source_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    tracking_id = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=utcnow)

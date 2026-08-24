@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronLeft, ChevronRight, Check, X, ExternalLink, Download } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Check, X, ExternalLink, Download, ShieldX } from 'lucide-react'
 import ProspectDetail from './ProspectDetail'
 import ExportButton from './ExportButton'
 
@@ -10,6 +10,14 @@ const statusConfig = {
   email_sent: { label: '이메일 발송', color: 'bg-blue-100 text-blue-700' },
   dm_sent: { label: 'DM 발송', color: 'bg-purple-100 text-purple-700' },
   sent: { label: '발송완료', color: 'bg-blue-100 text-blue-700' },
+}
+
+const sourceConfig = {
+  naver: { label: '네이버', color: 'bg-green-100 text-green-700' },
+  naver_shopping: { label: '네이버', color: 'bg-green-100 text-green-700' },
+  naver_map: { label: '네이버', color: 'bg-green-100 text-green-700' },
+  google: { label: '구글', color: 'bg-blue-100 text-blue-700' },
+  instagram: { label: '인스타그램', color: 'bg-pink-100 text-pink-700' },
 }
 
 const getScoreColor = (score) => {
@@ -28,6 +36,7 @@ export default function ProspectTable({
   onApproveAll,
   showActions = true,
   projectId,
+  onBlacklist,
 }) {
   const [selectedProspect, setSelectedProspect] = useState(null)
 
@@ -110,7 +119,15 @@ export default function ProspectTable({
                           <span className="text-gray-400">-</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-gray-600">{p.source || '-'}</td>
+                      <td className="px-4 py-3">
+                        {p.source ? (
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${sourceConfig[p.source]?.color || 'bg-gray-100 text-gray-600'}`}>
+                            {sourceConfig[p.source]?.label || p.source}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-center">
                         <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${getScoreColor(p.score || 0)}`}>
                           {p.score || 0}
@@ -140,6 +157,15 @@ export default function ProspectTable({
                                 title="거절"
                               >
                                 <X className="w-4 h-4" />
+                              </button>
+                            )}
+                            {p.status === 'rejected' && onBlacklist && (
+                              <button
+                                onClick={() => onBlacklist(p)}
+                                className="p-1.5 text-gray-500 hover:bg-gray-100 rounded transition-colors cursor-pointer"
+                                title="블랙리스트에 추가"
+                              >
+                                <ShieldX className="w-4 h-4" />
                               </button>
                             )}
                           </div>

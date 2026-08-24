@@ -77,12 +77,22 @@ const OutreachAPI = (() => {
     return data;
   }
 
-  async function getDmQueue() {
-    return apiGet('/api/chrome/dm-queue');
+  async function getProjects() {
+    return apiGet('/api/projects/');
+  }
+
+  async function getDmQueue(projectId) {
+    if (!projectId) throw new Error('프로젝트를 먼저 선택하세요.');
+    return apiGet(`/api/chrome/dm-queue?project_id=${projectId}`);
   }
 
   async function reportDmResult(result) {
     return apiPost('/api/chrome/dm-result', result);
+  }
+
+  async function ping(projectId) {
+    if (!projectId) return null;
+    return apiPost(`/api/projects/${projectId}/dm/ping`, {});
   }
 
   return {
@@ -93,7 +103,9 @@ const OutreachAPI = (() => {
     apiGet,
     apiPost,
     login,
+    getProjects,
     getDmQueue,
     reportDmResult,
+    ping,
   };
 })();

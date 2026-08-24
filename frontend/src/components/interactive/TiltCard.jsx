@@ -24,7 +24,7 @@ export default function TiltCard({ children, className = '', glowColor = 'rgba(5
 
   return (
     <div
-      className={`relative overflow-hidden ${className}`}
+      className={`relative overflow-visible ${className}`}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import api from '../lib/api'
 import { Plus, X, GripVertical } from 'lucide-react'
 
@@ -90,7 +90,7 @@ export default function PipelinePage() {
         )}
       </div>
 
-      <div className="flex gap-4 overflow-x-auto pb-4" style={{ minHeight: '60vh' }}>
+      <div data-onboarding="pipeline-board" className="flex gap-4 overflow-x-auto pb-4" style={{ minHeight: '60vh' }}>
         {stages.map((stage) => {
           const stageDeals = deals.filter((d) => d.stage_id === stage.id)
           const stageTotal = stageDeals.reduce((s, d) => s + d.value, 0)
@@ -107,8 +107,32 @@ export default function PipelinePage() {
                   <span className="text-sm font-semibold text-gray-700">{stage.name}</span>
                   <span className="text-xs text-gray-400">{stageDeals.length}</span>
                 </div>
-                <span className="text-xs text-gray-500">{stageTotal.toLocaleString()}원</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">{stageTotal.toLocaleString()}원</span>
+                  <button
+                    onClick={() => setShowDealForm(showDealForm === stage.id ? null : stage.id)}
+                    className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors cursor-pointer"
+                    title="딜 추가"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
+
+              {showDealForm === stage.id && (
+                <div className="mb-2 bg-white rounded-lg border border-gray-200 p-3 space-y-2">
+                  <input type="text" value={dealForm.title} onChange={(e) => setDealForm({ ...dealForm, title: e.target.value })} placeholder="딜 제목" className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" autoFocus />
+                  <input type="number" value={dealForm.value} onChange={(e) => setDealForm({ ...dealForm, value: e.target.value })} placeholder="금액 (원)" className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" />
+                  <select value={dealForm.project_id} onChange={(e) => setDealForm({ ...dealForm, project_id: e.target.value })} className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm">
+                    <option value="">프로젝트 선택</option>
+                    {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                  <div className="flex justify-end gap-2">
+                    <button onClick={() => setShowDealForm(null)} className="px-2 py-1 text-xs text-gray-500 cursor-pointer">취소</button>
+                    <button onClick={() => createDeal(stage.id)} className="px-2 py-1 bg-blue-600 text-white text-xs rounded cursor-pointer">추가</button>
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-2 min-h-[100px]">
                 {stageDeals.map((deal) => (
@@ -123,25 +147,6 @@ export default function PipelinePage() {
                   </div>
                 ))}
               </div>
-
-              {showDealForm === stage.id ? (
-                <div className="mt-2 bg-white rounded-lg border border-gray-200 p-3 space-y-2">
-                  <input type="text" value={dealForm.title} onChange={(e) => setDealForm({ ...dealForm, title: e.target.value })} placeholder="딜 제목" className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" autoFocus />
-                  <input type="number" value={dealForm.value} onChange={(e) => setDealForm({ ...dealForm, value: e.target.value })} placeholder="금액 (원)" className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" />
-                  <select value={dealForm.project_id} onChange={(e) => setDealForm({ ...dealForm, project_id: e.target.value })} className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm">
-                    <option value="">프로젝트 선택</option>
-                    {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                  <div className="flex justify-end gap-2">
-                    <button onClick={() => setShowDealForm(null)} className="px-2 py-1 text-xs text-gray-500 cursor-pointer">취소</button>
-                    <button onClick={() => createDeal(stage.id)} className="px-2 py-1 bg-blue-600 text-white text-xs rounded cursor-pointer">추가</button>
-                  </div>
-                </div>
-              ) : (
-                <button onClick={() => setShowDealForm(stage.id)} className="mt-2 w-full flex items-center justify-center gap-1 py-2 text-xs text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer">
-                  <Plus className="w-3.5 h-3.5" /> 딜 추가
-                </button>
-              )}
             </div>
           )
         })}

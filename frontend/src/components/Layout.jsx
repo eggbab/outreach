@@ -4,10 +4,12 @@ import { useAuth } from '../lib/auth'
 import {
   LayoutDashboard, Settings, LogOut, CreditCard,
   BarChart3, Mail, FileText, Kanban, Phone,
-  FileCheck, Calendar, Users, Key, Menu, X,
+  FileCheck, Calendar, Users, Key, Menu, X, Search, ShieldX, Chrome,
 } from 'lucide-react'
 import Logo from './Logo'
 import UsageBadge from './UsageBadge'
+import OnboardingGuide from './OnboardingGuide'
+import HelpWidget from './HelpWidget'
 
 export default function Layout({ children }) {
   const { user, logout } = useAuth()
@@ -77,10 +79,28 @@ export default function Layout({ children }) {
         </NavLink>
 
         <p className={navSectionClass}>데이터</p>
+        <NavLink to="/discover" className={navLinkClass} onClick={closeMobile}>
+          <Search className="w-5 h-5" />
+          잠재고객 DB
+        </NavLink>
         <NavLink to="/analytics" className={navLinkClass} onClick={closeMobile}>
           <BarChart3 className="w-5 h-5" />
           분석
         </NavLink>
+        <NavLink to="/blacklist" className={navLinkClass} onClick={closeMobile}>
+          <ShieldX className="w-5 h-5" />
+          블랙리스트
+        </NavLink>
+
+        {user?.is_admin && (
+          <>
+            <p className={navSectionClass}>관리자</p>
+            <NavLink to="/admin" className={navLinkClass} onClick={closeMobile}>
+              <Key className="w-5 h-5" />
+              서비스 키 관리
+            </NavLink>
+          </>
+        )}
 
         <p className={navSectionClass}>설정</p>
         <NavLink to="/teams" className={navLinkClass} onClick={closeMobile}>
@@ -94,6 +114,10 @@ export default function Layout({ children }) {
         <NavLink to="/pricing" className={navLinkClass} onClick={closeMobile}>
           <CreditCard className="w-5 h-5" />
           요금제
+        </NavLink>
+        <NavLink to="/extension" className={navLinkClass} onClick={closeMobile}>
+          <Chrome className="w-5 h-5" />
+          크롬 확장 설치
         </NavLink>
         <NavLink to="/settings" data-onboarding="nav-settings" className={navLinkClass} onClick={closeMobile}>
           <Settings className="w-5 h-5" />
@@ -156,6 +180,9 @@ export default function Layout({ children }) {
       <main className="lg:ml-64 p-6 pt-20 lg:pt-8 lg:p-8">
         {children}
       </main>
+
+      <OnboardingGuide />
+      <HelpWidget />
     </div>
   )
 }

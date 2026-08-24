@@ -2,14 +2,14 @@ import secrets
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models.models import Activity, Proposal, ProposalTemplate, Prospect, User
+from app.models.models import Activity, Proposal, ProposalTemplate, User
 
 router = APIRouter(tags=["proposals"])
 

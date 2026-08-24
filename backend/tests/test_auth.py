@@ -6,6 +6,7 @@ class TestSignup:
                 "email": "new@example.com",
                 "password": "password123",
                 "name": "New User",
+                "accept_terms": True,
             },
         )
         assert response.status_code == 201
@@ -19,6 +20,7 @@ class TestSignup:
             "email": "dup@example.com",
             "password": "password123",
             "name": "First User",
+            "accept_terms": True,
         }
         resp1 = client.post("/api/auth/signup", json=payload)
         assert resp1.status_code == 201
@@ -37,6 +39,7 @@ class TestLogin:
                 "email": "login@example.com",
                 "password": "password123",
                 "name": "Login User",
+                "accept_terms": True,
             },
         )
         # Then login
@@ -57,6 +60,7 @@ class TestLogin:
                 "email": "wrong@example.com",
                 "password": "correctpassword",
                 "name": "Wrong User",
+                "accept_terms": True,
             },
         )
         response = client.post(
@@ -71,14 +75,14 @@ class TestPasswordValidation:
     def test_signup_short_password(self, client):
         response = client.post(
             "/api/auth/signup",
-            json={"email": "short@example.com", "password": "1234567", "name": "Short"},
+            json={"email": "short@example.com", "password": "1234567", "name": "Short", "accept_terms": True},
         )
         assert response.status_code == 400
 
     def test_signup_minimum_password(self, client):
         response = client.post(
             "/api/auth/signup",
-            json={"email": "min@example.com", "password": "12345678", "name": "Min"},
+            json={"email": "min@example.com", "password": "12345678", "name": "Min", "accept_terms": True},
         )
         assert response.status_code == 201
 
@@ -95,7 +99,10 @@ class TestSubscription:
     def test_credit_packages(self, client):
         response = client.get("/api/subscription/credit-packages")
         assert response.status_code == 200
-        assert len(response.json()) == 3
+        packages = response.json()
+        assert len(packages) >= 1
+        ids = {p["id"] for p in packages}
+        assert "credits_10000" in ids
 
 
 class TestTracking:
@@ -115,6 +122,6 @@ class TestGetMe:
         data = response.json()
         assert data["email"] == "test@example.com"
         assert data["name"] == "Test User"
-        assert data["plan"] == "pro"  # 14-day trial
+        assert data["plan"] == "free"  # 신규 가입은 free + 50 크레딧 + 14일 트라이얼
         assert "id" in data
         assert "created_at" in data

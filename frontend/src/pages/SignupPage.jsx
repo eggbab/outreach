@@ -10,6 +10,7 @@ export default function SignupPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [acceptTerms, setAcceptTerms] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -34,14 +35,19 @@ export default function SignupPage() {
       return
     }
 
-    if (password.length < 6) {
-      setError('비밀번호는 6자 이상이어야 합니다.')
+    if (password.length < 8) {
+      setError('비밀번호는 8자 이상이어야 합니다.')
+      return
+    }
+
+    if (!acceptTerms) {
+      setError('이용약관과 개인정보처리방침에 동의해주세요.')
       return
     }
 
     setSubmitting(true)
     try {
-      await signup(email, password, name)
+      await signup(email, password, name, null, acceptTerms)
       navigate('/dashboard')
     } catch (err) {
       setError(err.response?.data?.detail || '회원가입에 실패했습니다.')
@@ -72,49 +78,70 @@ export default function SignupPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">이름</label>
+              <label htmlFor="signup-name" className="block text-sm font-medium text-gray-700 mb-1">이름</label>
               <input
+                id="signup-name"
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
+                autoComplete="name"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 placeholder="홍길동"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">이메일</label>
+              <label htmlFor="signup-email" className="block text-sm font-medium text-gray-700 mb-1">이메일</label>
               <input
+                id="signup-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                autoComplete="email"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 placeholder="email@example.com"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">비밀번호</label>
+              <label htmlFor="signup-password" className="block text-sm font-medium text-gray-700 mb-1">비밀번호</label>
               <input
+                id="signup-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                autoComplete="new-password"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                placeholder="6자 이상"
+                placeholder="8자 이상"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">비밀번호 확인</label>
+              <label htmlFor="signup-confirm-password" className="block text-sm font-medium text-gray-700 mb-1">비밀번호 확인</label>
               <input
+                id="signup-confirm-password"
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
+                autoComplete="new-password"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                 placeholder="비밀번호 재입력"
               />
             </div>
+            <label className="flex items-start gap-2 cursor-pointer pt-1">
+              <input
+                type="checkbox"
+                checked={acceptTerms}
+                onChange={(e) => setAcceptTerms(e.target.checked)}
+                className="mt-0.5 w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+              />
+              <span className="text-sm text-gray-600 leading-snug">
+                <Link to="/terms" target="_blank" className="text-blue-600 hover:underline">이용약관</Link>과{' '}
+                <Link to="/privacy" target="_blank" className="text-blue-600 hover:underline">개인정보처리방침</Link>에 동의합니다 (필수)
+              </span>
+            </label>
+
             <button
               type="submit"
               disabled={submitting}

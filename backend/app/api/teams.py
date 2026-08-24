@@ -54,11 +54,8 @@ def list_teams(
     current_user: User = Depends(get_current_user),
 ):
     # Teams where user is owner or member
-    member_team_ids = (
-        db.query(TeamMember.team_id)
-        .filter(TeamMember.user_id == current_user.id)
-        .subquery()
-    )
+    from sqlalchemy import select
+    member_team_ids = select(TeamMember.team_id).where(TeamMember.user_id == current_user.id)
     teams = (
         db.query(Team)
         .filter((Team.owner_id == current_user.id) | (Team.id.in_(member_team_ids)))

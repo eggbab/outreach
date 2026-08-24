@@ -4,7 +4,7 @@ from typing import Optional
 
 import math
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -134,7 +134,7 @@ def update_prospect_status(
 ):
     _get_project_or_404(project_id, current_user.id, db)
 
-    valid_statuses = {"approved", "rejected", "collected"}
+    valid_statuses = {"approved", "rejected", "collected", "replied"}
     if req.status not in valid_statuses:
         raise HTTPException(
             status_code=400,
@@ -231,3 +231,98 @@ def import_prospects(
 
     db.commit()
     return {"imported": imported, "skipped": skipped}
+
+
+class DuplicateEntry(BaseModel):
+    prospect_id: int
+    duplicate_in_project_id: int
+    duplicate_in_project_name: str
+    match_field: str
+
+
+@router.get("/duplicates", response_model=list[DuplicateEntry])
+def check_duplicates(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Find prospects in this project that also exist in other projects of the same user."""
+    _get_project_or_404(project_id, current_user.id, db)
+
+    prospects = (
+        db.query(Prospect)
+        .filter(Prospect.project_id == project_id)
+        .all()
+    )
+
+    # Get all other project IDs for this user
+    other_projects = (
+        db.query(Project)
+        .filter(Project.user_id == current_user.id, Project.id != project_id)
+        .all()
+    )
+    other_project_ids = [p.id for p in other_projects]
+    project_name_map = {p.id: p.name for p in other_projects}
+
+    if not other_project_ids:
+        return []
+
+    duplicates = []
+    for prospect in prospects:
+        # Check email match
+        if prospect.email:
+            match = (
+                db.query(Prospect)
+                .filter(
+                    Prospect.project_id.in_(other_project_ids),
+                    Prospect.email == prospect.email,
+                )
+                .first()
+            )
+            if match:
+                duplicates.append(DuplicateEntry(
+                    prospect_id=prospect.id,
+                    duplicate_in_project_id=match.project_id,
+                    duplicate_in_project_name=project_name_map.get(match.project_id, ""),
+                    match_field="email",
+                ))
+                continue
+
+        # Check phone match
+        if prospect.phone:
+            match = (
+                db.query(Prospect)
+                .filter(
+                    Prospect.project_id.in_(other_project_ids),
+                    Prospect.phone == prospect.phone,
+                )
+                .first()
+            )
+            if match:
+                duplicates.append(DuplicateEntry(
+                    prospect_id=prospect.id,
+                    duplicate_in_project_id=match.project_id,
+                    duplicate_in_project_name=project_name_map.get(match.project_id, ""),
+                    match_field="phone",
+                ))
+                continue
+
+        # Check instagram match
+        if prospect.instagram:
+            match = (
+                db.query(Prospect)
+                .filter(
+                    Prospect.project_id.in_(other_project_ids),
+                    Prospect.instagram == prospect.instagram,
+                )
+                .first()
+            )
+            if match:
+                duplicates.append(DuplicateEntry(
+                    prospect_id=prospect.id,
+                    duplicate_in_project_id=match.project_id,
+                    duplicate_in_project_name=project_name_map.get(match.project_id, ""),
+                    match_field="instagram",
+                ))
+
+    return duplicates

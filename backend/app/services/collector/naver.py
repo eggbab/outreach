@@ -1,167 +1,92 @@
 import logging
-import re
+import random
 import time
-from typing import Optional
-from urllib.parse import quote_plus, urljoin, urlparse
+from urllib.parse import quote_plus, urlparse
 
-import httpx
-from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright
+from app.services.collector.extract import deep_extract_email, keyword_matches
 
 logger = logging.getLogger(__name__)
 
-EMAIL_REGEX = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
-PHONE_REGEX = re.compile(r"0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}")
-
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8",
-}
-
-# Exclude common non-business email domains
-EXCLUDE_EMAIL_DOMAINS = {
-    "example.com", "test.com", "naver.com", "google.com",
-    "daum.net", "hanmail.net", "nate.com",
-}
-
-MAX_RETRIES = 2
-BACKOFF_SECONDS = [2, 4]
+USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+)
 
 
-def _request_with_retry(client: httpx.Client, url: str, context: str = "") -> Optional[httpx.Response]:
-    """
-    Make an HTTP GET request with retry logic.
-    - Retries up to 2 times with exponential backoff (2s, 4s).
-    - On 403/429: sleep 5s and retry once.
-    - On 404: skip silently, return None.
-    - On timeout: log warning, return None.
-    """
-    for attempt in range(MAX_RETRIES + 1):
-        try:
-            resp = client.get(url)
-
-            if resp.status_code == 404:
-                return None
-
-            if resp.status_code in (403, 429):
-                logger.warning(f"[{context}] HTTP {resp.status_code} (rate limited/blocked) for {url}")
-                if attempt == 0:
-                    time.sleep(5)
-                    continue
-                return None
-
-            if resp.status_code != 200:
-                logger.warning(f"[{context}] HTTP {resp.status_code} for {url}")
-                if attempt < MAX_RETRIES:
-                    time.sleep(BACKOFF_SECONDS[attempt])
-                    continue
-                return None
-
-            return resp
-
-        except httpx.TimeoutException:
-            logger.warning(f"[{context}] Connection timeout for {url} (attempt {attempt + 1}/{MAX_RETRIES + 1})")
-            if attempt < MAX_RETRIES:
-                time.sleep(BACKOFF_SECONDS[attempt])
-                continue
-            return None
-
-        except httpx.ConnectError as e:
-            logger.warning(f"[{context}] Connection error for {url}: {e} (attempt {attempt + 1}/{MAX_RETRIES + 1})")
-            if attempt < MAX_RETRIES:
-                time.sleep(BACKOFF_SECONDS[attempt])
-                continue
-            return None
-
-        except Exception as e:
-            logger.error(f"[{context}] Unexpected error requesting {url}: {e}")
-            if attempt < MAX_RETRIES:
-                time.sleep(BACKOFF_SECONDS[attempt])
-                continue
-            return None
-
-    return None
+def _random_delay(min_sec: float = 1.0, max_sec: float = 3.0):
+    """Sleep for a random duration between min_sec and max_sec."""
+    time.sleep(random.uniform(min_sec, max_sec))
 
 
-def _extract_contact_from_url(url: str, timeout: float = 10.0) -> dict:
-    """Visit a URL and extract email/phone from page content."""
-    result = {"emails": [], "phones": []}
-    try:
-        with httpx.Client(headers=HEADERS, follow_redirects=True, timeout=timeout) as client:
-            resp = _request_with_retry(client, url, context="naver/extract_contact")
-            if resp is None:
-                return result
-
-            text = resp.text
-
-            # Extract emails
-            emails = EMAIL_REGEX.findall(text)
-            for email in emails:
-                domain = email.split("@")[1].lower()
-                if domain not in EXCLUDE_EMAIL_DOMAINS and len(email) < 100:
-                    result["emails"].append(email.lower())
-
-            # Extract phones
-            phones = PHONE_REGEX.findall(text)
-            result["phones"] = list(set(phones))
-
-    except Exception as e:
-        logger.error(f"[naver/extract_contact] Failed to extract contacts from {url}: {e}")
-
-    result["emails"] = list(set(result["emails"]))
-    return result
-
-
-def search_naver(keyword: str, max_results: int = 20) -> list[dict]:
-    """Search Naver web for businesses matching the keyword."""
+def search_naver(keyword: str, max_results: int = 20, match_level: str = "medium") -> list[dict]:
+    """Search Naver web for businesses matching the keyword using Playwright."""
     prospects = []
     encoded = quote_plus(keyword)
-    url = f"https://search.naver.com/search.naver?query={encoded}&where=web"
+    search_url = f"https://search.naver.com/search.naver?query={encoded}&where=web"
 
     try:
-        with httpx.Client(headers=HEADERS, follow_redirects=True, timeout=15) as client:
-            resp = _request_with_retry(client, url, context="naver/search")
-            if resp is None:
-                logger.warning(f"[naver/search] Failed to get search results for '{keyword}'")
-                return prospects
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(
+                user_agent=USER_AGENT,
+                locale="ko-KR",
+                viewport={"width": 1280, "height": 800},
+            )
+            page = context.new_page()
 
-            soup = BeautifulSoup(resp.text, "html.parser")
+            # Navigate to Naver search
+            page.goto(search_url, timeout=20000, wait_until="domcontentloaded")
+            page.wait_for_timeout(2000)
 
-            # Extract links from search results
-            seen_urls = set()
-            links = soup.select("a[href]")
-            for link in links:
-                href = link.get("href", "")
-                if not href or "naver.com" in href or "search.naver" in href:
-                    continue
-                if href.startswith("http") and href not in seen_urls:
-                    seen_urls.add(href)
+            # Extract all outbound links from search results
+            links = page.eval_on_selector_all(
+                "a[href]",
+                """elements => elements
+                    .map(el => el.href)
+                    .filter(href =>
+                        href.startsWith('http') &&
+                        !href.includes('naver.com') &&
+                        !href.includes('search.naver')
+                    )
+                """,
+            )
+            seen_urls = list(dict.fromkeys(links))[:max_results]  # dedupe, preserve order
 
-            # Visit each URL to extract contacts
-            for site_url in list(seen_urls)[:max_results]:
+            # Visit each URL to deep-extract contacts
+            for site_url in seen_urls:
+                if len(prospects) >= max_results:
+                    break
                 try:
-                    parsed = urlparse(site_url)
-                    domain = parsed.netloc
-                    contacts = _extract_contact_from_url(site_url)
+                    email, phone, name, insta = deep_extract_email(page, site_url)
 
-                    if contacts["emails"] or contacts["phones"]:
-                        prospect = {
-                            "name": domain,
+                    # 정밀도 필터 — 페이지가 키워드와 일치하는지 확인
+                    if email or insta:
+                        try:
+                            page_title = page.title() or ""
+                            page_text = page.text_content("body") or ""
+                        except Exception:
+                            page_title, page_text = "", ""
+                        if not keyword_matches(page_title, page_text, keyword, match_level):
+                            logger.info(f"[naver] {site_url} 키워드 불일치 ({match_level}) — 스킵")
+                            continue
+
+                        prospects.append({
+                            "name": name or urlparse(site_url).netloc,
                             "website": site_url,
-                            "email": contacts["emails"][0] if contacts["emails"] else None,
-                            "phone": contacts["phones"][0] if contacts["phones"] else None,
+                            "email": email,
+                            "phone": phone,
+                            "instagram": insta,
                             "source": "naver",
                             "category": keyword,
-                        }
-                        prospects.append(prospect)
+                        })
 
-                    time.sleep(1)  # Rate limiting
+                    _random_delay(0.5, 1.5)
                 except Exception as e:
                     logger.error(f"[naver/search] Error processing {site_url}: {e}")
                     continue
+
+            browser.close()
 
     except Exception as e:
         logger.error(f"[naver/search] Search error for '{keyword}': {e}")
@@ -169,49 +94,76 @@ def search_naver(keyword: str, max_results: int = 20) -> list[dict]:
     return prospects
 
 
-def search_naver_shopping(keyword: str, max_results: int = 15) -> list[dict]:
-    """Search Naver Shopping for smartstore sellers."""
+def search_naver_shopping(keyword: str, max_results: int = 15, match_level: str = "medium") -> list[dict]:
+    """Search Naver Shopping for smartstore sellers using Playwright."""
     prospects = []
     encoded = quote_plus(keyword)
-    url = f"https://search.shopping.naver.com/search/all?query={encoded}"
+    search_url = f"https://search.shopping.naver.com/search/all?query={encoded}"
 
     try:
-        with httpx.Client(headers=HEADERS, follow_redirects=True, timeout=15) as client:
-            resp = _request_with_retry(client, url, context="naver_shopping/search")
-            if resp is None:
-                logger.warning(f"[naver_shopping/search] Failed to get results for '{keyword}'")
-                return prospects
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(
+                user_agent=USER_AGENT,
+                locale="ko-KR",
+                viewport={"width": 1280, "height": 800},
+            )
+            page = context.new_page()
 
-            soup = BeautifulSoup(resp.text, "html.parser")
+            # Navigate to Naver Shopping search
+            page.goto(search_url, timeout=20000, wait_until="domcontentloaded")
+            page.wait_for_timeout(3000)  # shopping page is JS-heavy
 
-            # Look for smartstore links
-            store_links = set()
-            for a_tag in soup.select("a[href*='smartstore.naver.com']"):
-                href = a_tag.get("href", "")
-                if "smartstore.naver.com" in href:
-                    # Extract the store base URL
-                    parsed = urlparse(href)
-                    store_base = f"{parsed.scheme}://{parsed.netloc}{parsed.path.split('/products')[0]}"
-                    store_links.add(store_base)
+            # Extract smartstore links
+            store_links = page.eval_on_selector_all(
+                "a[href*='smartstore.naver.com']",
+                """elements => {
+                    const stores = new Set();
+                    elements.forEach(el => {
+                        const href = el.href;
+                        if (href.includes('smartstore.naver.com')) {
+                            try {
+                                const url = new URL(href);
+                                const pathParts = url.pathname.split('/');
+                                // Get store base: /storename
+                                const storeName = pathParts[1] || '';
+                                if (storeName) {
+                                    stores.add(url.origin + '/' + storeName);
+                                }
+                            } catch(e) {}
+                        }
+                    });
+                    return [...stores];
+                }""",
+            )
 
-            for store_url in list(store_links)[:max_results]:
+            unique_stores = list(dict.fromkeys(store_links))[:max_results]
+
+            for store_url in unique_stores:
+                if len(prospects) >= max_results:
+                    break
                 try:
-                    contacts = _extract_contact_from_url(store_url)
-                    store_name = urlparse(store_url).path.strip("/").split("/")[0] if "/" in urlparse(store_url).path else urlparse(store_url).netloc
+                    email, phone, name, insta = deep_extract_email(page, store_url)
+                    store_name = name or urlparse(store_url).path.strip("/").split("/")[0]
 
-                    prospect = {
-                        "name": store_name,
+                    if not (email or insta):
+                        continue
+
+                    prospects.append({
+                        "name": store_name or urlparse(store_url).netloc,
                         "website": store_url,
-                        "email": contacts["emails"][0] if contacts["emails"] else None,
-                        "phone": contacts["phones"][0] if contacts["phones"] else None,
+                        "email": email,
+                        "phone": phone,
+                        "instagram": insta,
                         "source": "naver_shopping",
                         "category": keyword,
-                    }
-                    prospects.append(prospect)
-                    time.sleep(1)
+                    })
+                    _random_delay(0.5, 1.0)
                 except Exception as e:
                     logger.error(f"[naver_shopping/search] Error processing {store_url}: {e}")
                     continue
+
+            browser.close()
 
     except Exception as e:
         logger.error(f"[naver_shopping/search] Search error for '{keyword}': {e}")
@@ -219,52 +171,97 @@ def search_naver_shopping(keyword: str, max_results: int = 15) -> list[dict]:
     return prospects
 
 
-def search_naver_map(keyword: str, max_results: int = 15) -> list[dict]:
-    """Search Naver Map for local businesses."""
+def search_naver_map(keyword: str, max_results: int = 15, match_level: str = "medium") -> list[dict]:
+    """Search Naver Map for local businesses using Playwright."""
     prospects = []
     encoded = quote_plus(keyword)
 
-    # Naver Map search API (public, no auth required)
-    url = f"https://map.naver.com/p/api/search/allSearch?query={encoded}&type=all"
-
     try:
-        map_headers = {**HEADERS, "Referer": "https://map.naver.com/"}
-        with httpx.Client(headers=map_headers, follow_redirects=True, timeout=15) as client:
-            resp = _request_with_retry(client, url, context="naver_map/search")
-            if resp is None:
-                logger.warning(f"[naver_map/search] Failed to get results for '{keyword}'")
-                return prospects
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(
+                user_agent=USER_AGENT,
+                locale="ko-KR",
+                viewport={"width": 1280, "height": 800},
+            )
+            page = context.new_page()
 
-            try:
-                data = resp.json()
-            except Exception:
-                logger.warning(f"[naver_map/search] Invalid JSON response for '{keyword}'")
+            # Navigate to Naver Map to establish cookies/context, then fetch API
+            page.goto("https://map.naver.com/", timeout=20000, wait_until="domcontentloaded")
+            page.wait_for_timeout(2000)
+
+            # Use the internal API endpoint via page.evaluate (same-origin fetch)
+            api_url = f"https://map.naver.com/p/api/search/allSearch?query={encoded}&type=all"
+            result = page.evaluate(
+                """async (url) => {
+                    try {
+                        const resp = await fetch(url, {
+                            headers: { 'Accept': 'application/json' }
+                        });
+                        const text = await resp.text();
+                        return { ok: resp.ok, status: resp.status, body: text };
+                    } catch(e) {
+                        return { ok: false, status: 0, body: String(e) };
+                    }
+                }""",
+                api_url,
+            )
+
+            data = None
+            if result and result.get("ok"):
+                try:
+                    import json as _json
+                    data = _json.loads(result.get("body") or "")
+                except Exception:
+                    data = None
+
+            if data is None:
+                logger.warning(
+                    f"[naver_map/search] API returned no data for '{keyword}' "
+                    f"(status={result.get('status') if result else 'n/a'}, "
+                    f"body_preview={(result.get('body') or '')[:120] if result else ''!r})"
+                )
+                browser.close()
                 return prospects
 
             # Extract place results
-            place_list = data.get("result", {}).get("place", {}).get("list", [])
+            place_list = (
+                data.get("result", {}).get("place", {}).get("list", [])
+                if isinstance(data, dict)
+                else []
+            )
 
-            for place in place_list[:max_results]:
-                name = place.get("name", "")
-                phone = place.get("tel", "")
+            for place in place_list:
+                if len(prospects) >= max_results:
+                    break
+                place_name = place.get("name", "")
+                place_phone = place.get("tel", "")
                 website = place.get("homePage", "") or place.get("virtualPhone", "")
 
                 email = None
-                # Try to extract email from the business website
+                insta = None
                 if website and website.startswith("http"):
-                    contacts = _extract_contact_from_url(website)
-                    email = contacts["emails"][0] if contacts["emails"] else None
-                    time.sleep(0.5)
+                    try:
+                        email, extracted_phone, _, insta = deep_extract_email(page, website)
+                        place_phone = place_phone or extracted_phone
+                        _random_delay(0.5, 1.0)
+                    except Exception as e:
+                        logger.warning(f"[naver_map/search] Failed to extract from {website}: {e}")
 
-                prospect = {
-                    "name": name,
+                if not (email or insta or place_phone):
+                    continue
+
+                prospects.append({
+                    "name": place_name,
                     "website": website if website else None,
                     "email": email,
-                    "phone": phone if phone else None,
+                    "phone": place_phone if place_phone else None,
+                    "instagram": insta,
                     "source": "naver_map",
                     "category": keyword,
-                }
-                prospects.append(prospect)
+                })
+
+            browser.close()
 
     except Exception as e:
         logger.error(f"[naver_map/search] Search error for '{keyword}': {e}")
