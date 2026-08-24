@@ -430,28 +430,66 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ─── Testimonials ─── */}
+      {/* ─── Why Outreach — 신뢰 근거 (경쟁 도구가 못 주는 것) ─── */}
       <section className="py-24 px-6 border-t border-gray-100 bg-gray-50/50">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-12">
-            <WordReveal text="고객 후기" className="text-3xl font-semibold mb-3" />
+            <WordReveal text="왜 Outreach인가" className="text-3xl font-semibold mb-3" />
+            <RevealSection delay={200}>
+              <p className="text-gray-500">보내는 것보다 중요한 건, 계속 보낼 수 있는 상태를 지키는 것</p>
+            </RevealSection>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {[
+              {
+                emoji: '⚖️',
+                title: '정보통신망법 자동 준수',
+                desc: '(광고) 표기, 전송자 정보, 수신거부 링크가 모든 메일에 자동 삽입됩니다. 수신거부는 원클릭으로 처리되고 즉시 발송이 차단됩니다. 법을 몰라도 법을 지키게 됩니다.',
+              },
+              {
+                emoji: '📬',
+                title: '발송 계정을 지키는 안전장치',
+                desc: '새 계정은 워밍업 한도가 자동 적용되고, 존재하지 않는 이메일은 DNS 검증(MX)으로 발송 전에 걸러냅니다. 반송률이 낮아야 Gmail이 스팸함으로 보내지 않습니다.',
+              },
+              {
+                emoji: '💬',
+                title: '답장하면 자동으로 멈춤',
+                desc: '받은편지함을 자동 확인해 답장한 고객을 감지합니다. 관심을 보인 고객에게 후속 자동 메일이 나가서 딜을 망치는 일이 없습니다.',
+              },
+              {
+                emoji: '📈',
+                title: '쓸수록 좋아지는 잠재고객 DB',
+                desc: '모든 사용자의 발송·열람·답장 데이터가 모여 "실제로 반응하는 업체"가 표시됩니다. 카카오 공식 API 채널로 차단 걱정 없는 수집도 지원합니다.',
+              },
+            ].map((t, i) => (
+              <RevealSection key={t.title} delay={i * 120}>
+                <TiltCard className="bg-white rounded-xl ring-1 ring-gray-200 p-6 h-full" glowColor="rgba(59,130,246,0.06)">
+                  <div className="text-2xl mb-3 relative z-20">{t.emoji}</div>
+                  <h4 className="text-base font-semibold text-gray-900 mb-2 relative z-20">{t.title}</h4>
+                  <p className="text-sm text-gray-500 leading-relaxed relative z-20">{t.desc}</p>
+                </TiltCard>
+              </RevealSection>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── 이런 분들에게 맞습니다 ─── */}
+      <section className="py-24 px-6 border-t border-gray-100">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-12">
+            <WordReveal text="이런 분들에게 맞습니다" className="text-3xl font-semibold mb-3" />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
-              { name: '김영수', role: '마트마트 대표', text: '수작업으로 하루 종일 걸리던 잠재고객 수집이 30분이면 끝납니다. 파이프라인까지 한 곳에서 관리하니 영업 효율이 5배 이상 늘었어요.' },
-              { name: '이지현', role: '디자인 에이전시', text: '시퀀스 기능이 압도적입니다. 미열람 고객에게만 후속 메일이 가니까 스팸 걱정 없이 응답률이 올라갔어요.' },
-              { name: '박준호', role: 'B2B SaaS 영업', text: '인스타 DM + 이메일 + 통화 기록이 한 곳에 모여있으니 고객과의 히스토리를 한눈에 볼 수 있습니다.' },
+              { role: '납품·도매 영업', text: '지역+업종 키워드로 거래처 후보를 모으고, 전화·이메일·DM 중 닿는 채널로 먼저 제안해야 하는 분' },
+              { role: '에이전시·프리랜서', text: '마케팅·디자인·개발 서비스를 필요로 할 사업자를 찾아 포트폴리오를 보내고 미팅까지 잡아야 하는 분' },
+              { role: 'B2B 스타트업', text: '초기 고객 100곳을 확보해야 하는데 영업 전담 인력 없이 대표가 직접 아웃바운드를 돌려야 하는 분' },
             ].map((t, i) => (
-              <RevealSection key={t.name} delay={i * 150}>
+              <RevealSection key={t.role} delay={i * 150}>
                 <TiltCard className="bg-white rounded-xl ring-1 ring-gray-200 p-6 h-full" glowColor="rgba(59,130,246,0.06)">
-                  <p className="text-gray-600 text-sm leading-relaxed mb-4 relative z-20">"{t.text}"</p>
-                  <div className="flex items-center gap-3 relative z-20">
-                    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-medium text-xs">{t.name.charAt(0)}</div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{t.name}</p>
-                      <p className="text-xs text-gray-500">{t.role}</p>
-                    </div>
-                  </div>
+                  <p className="text-sm font-semibold text-blue-700 mb-2 relative z-20">{t.role}</p>
+                  <p className="text-gray-600 text-sm leading-relaxed relative z-20">{t.text}</p>
                 </TiltCard>
               </RevealSection>
             ))}
@@ -462,12 +500,12 @@ export default function LandingPage() {
       {/* ─── ROI ─── */}
       <section className="py-24 px-6 border-t border-gray-100">
         <div className="max-w-3xl mx-auto text-center">
-          <WordReveal text="도입 효과" className="text-3xl font-semibold mb-10" />
+          <WordReveal text="숫자로 보는 Outreach" className="text-3xl font-semibold mb-10" />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
-              { label: '수작업 시간 절약', value: 80, suffix: '%' },
-              { label: '응답률 향상', value: 3, suffix: 'x' },
-              { label: '월 비용', prefix: '₩', value: 29, suffix: 'K' },
+              { label: '수집 채널 (카카오·네이버·구글)', value: 5, suffix: '개' },
+              { label: '가입 시 무료 크레딧', value: 30, suffix: 'cr' },
+              { label: '월 구독료', prefix: '₩', value: 0, suffix: '' },
             ].map((item, i) => (
               <RevealSection key={item.label} delay={i * 150}>
                 <div className="bg-gray-50 rounded-xl ring-1 ring-gray-200 p-6 hover:ring-blue-200 transition-colors">

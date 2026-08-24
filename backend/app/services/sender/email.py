@@ -192,6 +192,11 @@ def send_bulk_emails(
             skipped += 1
             continue
 
+        # ─── MX 검증 실패 주소 스킵 — 반송률 상승은 Gmail 평판 하락 직행 ───
+        if getattr(prospect, "email_valid", None) is False:
+            skipped += 1
+            continue
+
         # ─── 크레딧 사전 확인 ─── 부족하면 중단
         check = check_credits(db, user_id, "email", 1)
         if not check["allowed"]:

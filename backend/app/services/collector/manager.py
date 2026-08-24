@@ -10,19 +10,21 @@ from app.models.models import (
     Keyword, Prospect,
 )
 from app.services.collector.google import search_google
+from app.services.collector.kakao import search_kakao
 from app.services.collector.naver import search_naver, search_naver_map, search_naver_shopping
 
 logger = logging.getLogger(__name__)
 
-# Map source types to their collector functions.
-# 인스타그램 ID는 별도 수집 안 함 — 네이버/구글에서 사이트 방문 시 인스타 링크 자동 추출됨.
-SOURCE_COLLECTORS = {
-    "naver": [search_naver, search_naver_shopping, search_naver_map],
-    "google": [search_google],
-    # Legacy individual sources (backward compat)
-    "naver_shopping": [search_naver_shopping],
-    "naver_map": [search_naver_map],
-}
+# 수집 파이프라인 — 순서대로 실행, 목표량 채우면 중단.
+# 카카오는 공식 API(차단 리스크 없음)라 최우선. 키 미설정 시 자동 스킵.
+# 인스타그램 ID는 별도 수집 안 함 — 사이트 방문 시 인스타 링크 자동 추출됨.
+COLLECTION_PIPELINE = [
+    ("kakao", search_kakao),
+    ("naver", search_naver),
+    ("naver_shopping", search_naver_shopping),
+    ("naver_map", search_naver_map),
+    ("google", search_google),
+]
 
 # Industry classification mapping
 INDUSTRY_KEYWORDS = {
@@ -114,23 +116,24 @@ class CollectionManager:
             self.db.commit()
 
             try:
-                # Try all sources until we have enough results
+                # 파이프라인 순서대로 실행, 목표량 채우면 중단 (중복 소스 호출 없음)
                 raw_prospects = []
-                for source_key, collector_fns in SOURCE_COLLECTORS.items():
+                source_counts: dict[str, int] = {}
+                for source_key, fn in COLLECTION_PIPELINE:
                     remaining = max_results - len(raw_prospects)
                     if remaining <= 0:
                         break
-                    for fn in collector_fns:
-                        remaining = max_results - len(raw_prospects)
-                        if remaining <= 0:
-                            break
-                        try:
-                            job.current_task = f"{keyword_text} ({source_key})"
-                            self.db.commit()
-                            raw_prospects.extend(fn(keyword_text, max_results=remaining, match_level=match_level))
-                        except Exception as e:
-                            logger.warning(f"Source {source_key} failed for '{keyword_text}': {e}")
-                            continue
+                    try:
+                        job.current_task = f"{keyword_text} ({source_key})"
+                        self.db.commit()
+                        found = fn(keyword_text, max_results=remaining, match_level=match_level)
+                        source_counts[source_key] = len(found)
+                        raw_prospects.extend(found)
+                    except Exception as e:
+                        logger.warning(f"Source {source_key} failed for '{keyword_text}': {e}")
+                        source_counts[source_key] = 0
+                        continue
+                logger.info(f"'{keyword_text}' 소스별 수집: {source_counts}")
                 saved = self._save_prospects(project_id, raw_prospects, user_id, keyword_id)
                 total_prospects_found += saved
 
@@ -142,6 +145,12 @@ class CollectionManager:
         job.processed_tasks = len(tasks)
         job.prospects_found = total_prospects_found
         job.current_task = None
+        if total_prospects_found == 0:
+            # 실패는 아니지만 사용자에게 원인 후보를 안내 (차단/키워드 문제 구분 불가 시)
+            job.error = (
+                "수집 결과가 0건입니다. 키워드를 더 구체적으로 바꾸거나 "
+                "잠시 후 다시 시도해보세요. (검색 사이트가 일시적으로 차단했을 수도 있습니다)"
+            )
         job.completed_at = datetime.now(timezone.utc)
         self.db.commit()
 
@@ -200,10 +209,17 @@ class CollectionManager:
             if is_blacklisted:
                 continue
 
+            # 이메일 MX 검증 — 반송 방지 (True/False/None)
+            email_valid = None
+            if data.get("email"):
+                from app.services.email_verify import check_email_domain
+                email_valid = check_email_domain(data["email"])
+
             prospect = Prospect(
                 project_id=project_id,
                 name=data.get("name"),
                 email=data.get("email"),
+                email_valid=email_valid,
                 phone=data.get("phone"),
                 instagram=data.get("instagram"),
                 website=data.get("website"),
@@ -222,13 +238,18 @@ class CollectionManager:
             # 크레딧 차감 (수집 1건 = 1 크레딧)
             deduct_credits(self.db, user_id, CREDIT_COSTS["prospect"], f"잠재고객 수집: {data.get('email','')}")
 
-            # Upsert to global prospect pool
-            self._upsert_global_prospect(prospect, user_id)
+            # Upsert to global prospect pool (주소가 있으면 지역 분류)
+            region = None
+            addr = data.get("address")
+            if addr:
+                parts = addr.split()
+                region = " ".join(parts[:2]) if len(parts) >= 2 else parts[0]
+            self._upsert_global_prospect(prospect, user_id, region=region)
 
         self.db.commit()
         return saved_count
 
-    def _upsert_global_prospect(self, prospect: Prospect, user_id: int) -> None:
+    def _upsert_global_prospect(self, prospect: Prospect, user_id: int, region: str | None = None) -> None:
         """Create or update a GlobalProspect and link it to the Prospect."""
         gp = None
 
@@ -259,6 +280,8 @@ class CollectionManager:
                 gp.category = prospect.category
             if industry and not gp.industry:
                 gp.industry = industry
+            if region and not gp.region:
+                gp.region = region
         else:
             gp = GlobalProspect(
                 company_name=prospect.name,
@@ -269,9 +292,15 @@ class CollectionManager:
                 source=prospect.source,
                 category=prospect.category,
                 industry=industry,
+                region=region,
                 times_collected=1,
-                # 실사이트에서 추출된 이메일 = 약한 실존 증거 (발송/열람/답장 시 상향)
-                email_validity_score=0.3 if prospect.email else 0.0,
+                # MX 검증 결과 반영: 확인됨 0.4 / 실패 0.05 / 미확인 0.3 (열람·답장 시 상향)
+                email_validity_score=(
+                    0.0 if not prospect.email
+                    else 0.4 if prospect.email_valid is True
+                    else 0.05 if prospect.email_valid is False
+                    else 0.3
+                ),
             )
             self.db.add(gp)
             self.db.flush()

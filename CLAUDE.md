@@ -93,7 +93,8 @@ cd frontend && npm run dev
   - 시퀀스 발송 정비: 크레딧 차감 + 추적 픽셀 + 컴플라이언스 적용
   - 배포 수정: 프로덕션 dev 시크릿 기동 차단, schema_sync(create_all+컬럼 보정, alembic 미사용), .dockerignore 중첩 경로, Docker에 chrome-extension 포함, CORS 확장 origin 허용, 확장 alarms 권한, discover import 크레딧 차감, subscription self-upgrade 라우트 제거, bootstrap-first-admin은 ADMIN_EMAIL 제한
   - 테스트 135개 통과 (신규 30개 포함)
-- 아직 안 한 것: 실배포 실행 (Render/도메인), 계좌이체 외 PG 연동, 바운스(반송) 자동 감지
+- **v5.1 (2026-08-24)**: 카카오 로컬 공식 API 수집 채널 (KAKAO_REST_API_KEY, 파이프라인 최우선·차단 리스크 0), 이메일 MX 검증(email_valid 채움 + 발송 시 invalid 스킵), 수집 파이프라인 중복 호출 버그 수정, GlobalProspect.region 사용 시작, 랜딩 허위 후기/수치 제거(표시광고법) + "왜 Outreach인가" 섹션. 네이버 지도 수집은 응답 가로채기 방식(캡차 우회)
+- 아직 안 한 것: 실배포 실행 (Render/도메인), 계좌이체 외 PG 연동, SMTP 바운스 자동 감지, 공공데이터(인허가) 대량 시딩
 
 ## 배포
 - **권장: Docker 단일 박스** — `docker compose up -d` (백엔드가 frontend/dist까지 서빙)

@@ -37,6 +37,9 @@ cp .env.example .env
 - `ENV=production`
 - `BANK_NAME=`, `BANK_ACCOUNT=`, `BANK_HOLDER=` ← 입금받을 계좌
 - `ADMIN_EMAIL=본인이메일` ← 이 계정만 최초 관리자 승격 가능 (보안)
+- `KAKAO_REST_API_KEY=` ← **강력 권장.** developers.kakao.com에서 5분이면 무료 발급.
+  공식 API라 서버 IP가 차단될 걱정 없이 업체를 수집합니다 (일 10만 건 무료).
+  네이버/구글 수집이 차단돼도 카카오 채널은 계속 동작합니다.
 
 > `ENV=production`에서 SECRET_KEY/ENCRYPTION_KEY를 기본값으로 두면 **서버가 아예 시작하지 않습니다** (의도된 안전장치).
 
