@@ -4,6 +4,7 @@ import api from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { Save, Loader2, Key, AlertTriangle, Shield, ShieldAlert } from 'lucide-react'
 import DeliverabilityChecker from '../components/DeliverabilityChecker'
+import DomainAuthCheck from '../components/DomainAuthCheck'
 import TagManager from '../components/TagManager'
 
 const RISK_CONFIG = {
@@ -315,6 +316,9 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+
+        {/* 발신 도메인 인증 (SPF/DKIM/DMARC) */}
+        <DomainAuthCheck />
 
         {/* Email Subject */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">

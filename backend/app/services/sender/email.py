@@ -160,6 +160,7 @@ def send_bulk_emails(
     job=None,
     ad_prefix_enabled: bool = True,
     sender_info: Optional[str] = None,
+    variants: Optional[list] = None,  # A/B: EmailVariant 목록 (weight로 선택)
 ) -> dict:
     """
     Send emails to a list of approved prospects with rate limiting.
@@ -218,11 +219,28 @@ def send_bulk_emails(
         # Generate unique tracking ID for this email
         tracking_id = uuid.uuid4().hex
 
+        # ─── A/B: weight로 변형 선택 (있으면 이 변형의 제목/본문 사용) ───
+        chosen_variant = None
+        if variants:
+            total_weight = sum(max(1, getattr(v, "weight", 1)) for v in variants)
+            pick = random.uniform(0, total_weight)
+            acc = 0
+            for v in variants:
+                acc += max(1, getattr(v, "weight", 1))
+                if pick <= acc:
+                    chosen_variant = v
+                    break
+            if chosen_variant is None:
+                chosen_variant = variants[-1]
+
+        active_template = chosen_variant.body if chosen_variant else email_template
+        active_subject = chosen_variant.subject if chosen_variant else email_subject
+
         html_body = make_default_email_html(
             company_name=company_name,
             category=category,
             sender_name=sender_name,
-            custom_template=email_template,
+            custom_template=active_template,
         )
 
         # 스핀택스 변형 — 수신자마다 문구를 조금씩 다르게(동일 문구 대량발송 = 스팸 패턴)
@@ -254,8 +272,8 @@ def send_bulk_emails(
         else:
             html_body += tracking_pixel
 
-        # 사용자 설정 제목 (없으면 한국어 기본) + 변수 치환 + 스핀택스 변형 + (광고) 표기
-        raw_subject = email_subject or "안녕하세요, {company_name}님께 제안 드립니다"
+        # 사용자 설정/변형 제목 (없으면 한국어 기본) + 변수 치환 + 스핀택스 변형 + (광고) 표기
+        raw_subject = active_subject or "안녕하세요, {company_name}님께 제안 드립니다"
         subject = render_template(raw_subject, company_name, category, sender_name)
         subject = expand_spintax(subject, prospect.id)
         subject = apply_ad_prefix(subject, ad_prefix_enabled)
@@ -275,6 +293,7 @@ def send_bulk_emails(
             status="success" if success else "failed",
             error_message=None if success else "SMTP send failed",
             tracking_id=tracking_id,
+            variant_id=chosen_variant.id if chosen_variant else None,
         )
         db.add(log)
 

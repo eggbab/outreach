@@ -37,6 +37,7 @@ class SendStatusResponse(BaseModel):
 
 class StartEmailRequest(BaseModel):
     scheduled_at: Optional[datetime] = None
+    template_id: Optional[int] = None  # A/B: 이 템플릿의 변형들을 weight로 발송
 
 
 class TestEmailRequest(BaseModel):
@@ -142,6 +143,20 @@ def _run_email_sending_in_background(project_id: int, user_id: int):
                 db.commit()
                 return
 
+            # A/B: 지정된 템플릿의 변형들을 로드 (2개 이상일 때만 A/B 활성)
+            variants = None
+            if job.template_id:
+                from app.models.models import EmailTemplate, EmailVariant
+                tmpl = (
+                    db.query(EmailTemplate)
+                    .filter(EmailTemplate.id == job.template_id, EmailTemplate.user_id == user_id)
+                    .first()
+                )
+                if tmpl:
+                    vs = db.query(EmailVariant).filter(EmailVariant.template_id == tmpl.id).all()
+                    if len(vs) >= 2:
+                        variants = vs
+
             result = send_bulk_emails(
                 db=db,
                 gmail_email=settings.gmail_email,
@@ -155,6 +170,7 @@ def _run_email_sending_in_background(project_id: int, user_id: int):
                 job=job,
                 ad_prefix_enabled=settings.ad_prefix_enabled,
                 sender_info=settings.sender_info,
+                variants=variants,
             )
             job.status = "completed"
             job.sent_count = result["sent"]
@@ -280,6 +296,7 @@ def start_email_sending(
             status="scheduled",
             total_targets=target_count,
             scheduled_at=req.scheduled_at,
+            template_id=req.template_id,
         )
         db.add(job)
         db.commit()
@@ -294,6 +311,7 @@ def start_email_sending(
         user_id=current_user.id,
         status="running",
         total_targets=target_count,
+        template_id=req.template_id,
     )
     db.add(job)
     db.commit()

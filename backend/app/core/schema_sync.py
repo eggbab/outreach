@@ -23,6 +23,7 @@ _ADDED_COLUMNS = [
     ("dm_logs", "message_body", "TEXT"),
     ("dm_logs", "replied_at", "TIMESTAMP"),
     ("meetings", "reminder_sent_at", "TIMESTAMP"),
+    ("email_send_jobs", "template_id", "INTEGER"),
 ]
 
 # Postgres 네이티브 enum에 추가된 값

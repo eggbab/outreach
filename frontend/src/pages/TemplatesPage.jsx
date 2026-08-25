@@ -1,6 +1,93 @@
 import { useState, useEffect } from 'react'
 import api from '../lib/api'
-import { Plus, Edit2, Trash2, X, Copy } from 'lucide-react'
+import { Plus, Edit2, Trash2, X, FlaskConical, BarChart2 } from 'lucide-react'
+
+function VariantPanel({ template, showToast }) {
+  const [open, setOpen] = useState(false)
+  const [variants, setVariants] = useState([])
+  const [stats, setStats] = useState([])
+  const [adding, setAdding] = useState(false)
+  const [v, setV] = useState({ variant_name: 'B', subject: '', body: '', weight: 50 })
+
+  const load = () => {
+    api.get(`/templates/${template.id}/variants`).then(r => setVariants(r.data)).catch(() => {})
+    api.get(`/templates/${template.id}/variants/stats`).then(r => setStats(r.data)).catch(() => {})
+  }
+  useEffect(() => { if (open) load() }, [open])
+
+  const addVariant = async () => {
+    if (!v.subject.trim()) return
+    try {
+      await api.post(`/templates/${template.id}/variants`, v)
+      setAdding(false)
+      setV({ variant_name: 'B', subject: '', body: '', weight: 50 })
+      load()
+      showToast('변형이 추가되었습니다')
+    } catch (e) { showToast(e.response?.data?.detail || '실패', 'error') }
+  }
+  const del = async (id) => { await api.delete(`/templates/${template.id}/variants/${id}`); load() }
+
+  const statOf = (id) => stats.find(s => s.variant_id === id) || {}
+  const best = stats.length > 1
+    ? stats.reduce((a, b) => (b.open_rate > (a?.open_rate ?? -1) ? b : a), null)
+    : null
+
+  return (
+    <div className="mt-3 pt-3 border-t border-gray-100">
+      <button onClick={() => setOpen(!open)} className="flex items-center gap-1.5 text-xs font-medium text-blue-600 cursor-pointer">
+        <FlaskConical className="w-3.5 h-3.5" /> A/B 변형 {variants.length > 0 && `(${variants.length})`} {open ? '▲' : '▼'}
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2">
+          {variants.length === 0 && (
+            <p className="text-xs text-gray-400">변형을 추가하면 발송 시 수신자에게 무작위 분배되어 성과를 비교합니다.</p>
+          )}
+          {variants.map((vr) => {
+            const s = statOf(vr.id)
+            const isBest = best && best.variant_id === vr.id && (s.sent || 0) > 0
+            return (
+              <div key={vr.id} className={`rounded-lg border p-2.5 ${isBest ? 'border-green-300 bg-green-50/50' : 'border-gray-100'}`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-gray-800">
+                    변형 {vr.variant_name} · weight {vr.weight}
+                    {isBest && <span className="ml-1.5 text-green-600">← 우세</span>}
+                  </span>
+                  <button onClick={() => del(vr.id)} className="text-gray-300 hover:text-red-500 cursor-pointer"><Trash2 className="w-3 h-3" /></button>
+                </div>
+                <p className="text-xs text-gray-600 mt-0.5 truncate">{vr.subject}</p>
+                {(s.sent || 0) > 0 && (
+                  <div className="flex items-center gap-3 mt-1.5 text-[11px] text-gray-500">
+                    <span className="flex items-center gap-1"><BarChart2 className="w-3 h-3" />발송 {s.sent}</span>
+                    <span>열람 {s.open_rate}%</span>
+                    <span>클릭 {s.click_rate}%</span>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+          {adding ? (
+            <div className="rounded-lg border border-blue-200 p-2.5 space-y-2">
+              <div className="flex gap-2">
+                <input value={v.variant_name} onChange={e => setV({ ...v, variant_name: e.target.value.slice(0, 10) })} className="w-16 px-2 py-1 border border-gray-200 rounded text-xs" placeholder="B" />
+                <input type="number" value={v.weight} onChange={e => setV({ ...v, weight: parseInt(e.target.value) || 0 })} className="w-20 px-2 py-1 border border-gray-200 rounded text-xs" placeholder="weight" />
+              </div>
+              <input value={v.subject} onChange={e => setV({ ...v, subject: e.target.value })} className="w-full px-2 py-1 border border-gray-200 rounded text-xs" placeholder="변형 제목" />
+              <textarea value={v.body} onChange={e => setV({ ...v, body: e.target.value })} rows={3} className="w-full px-2 py-1 border border-gray-200 rounded text-xs font-mono resize-y" placeholder="변형 본문 ({company_name} 사용 가능)" />
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setAdding(false)} className="text-xs text-gray-500 cursor-pointer">취소</button>
+                <button onClick={addVariant} className="text-xs px-2.5 py-1 bg-blue-600 text-white rounded cursor-pointer">추가</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => setAdding(true)} className="text-xs text-gray-500 hover:text-blue-600 cursor-pointer flex items-center gap-1">
+              <Plus className="w-3 h-3" /> 변형 추가
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function TemplatesPage() {
   const [templates, setTemplates] = useState([])
@@ -84,7 +171,7 @@ export default function TemplatesPage() {
               </div>
               <p className="text-sm text-gray-600 font-medium mb-1">{t.subject}</p>
               <p className="text-xs text-gray-400 line-clamp-3">{t.body}</p>
-              <p className="text-xs text-gray-400 mt-3">{new Date(t.updated_at).toLocaleDateString('ko-KR')}</p>
+              <VariantPanel template={t} showToast={showToast} />
             </div>
           ))}
         </div>

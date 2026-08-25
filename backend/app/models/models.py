@@ -193,6 +193,7 @@ class EmailSendJob(Base):
     failed_count = Column(Integer, default=0)
     current_email = Column(String(255), nullable=True)
     error = Column(Text, nullable=True)
+    template_id = Column(Integer, ForeignKey("email_templates.id", ondelete="SET NULL"), nullable=True)  # A/B
     scheduled_at = Column(DateTime, nullable=True)  # None = send immediately
     started_at = Column(DateTime, default=utcnow, nullable=False)
     completed_at = Column(DateTime, nullable=True)

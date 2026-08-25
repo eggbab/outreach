@@ -97,3 +97,25 @@ def check_deliverability(
         suggestions=suggestions,
         has_gmail=has_gmail,
     )
+
+
+class DomainAuthResult(BaseModel):
+    domain: str | None = None
+    google_managed: bool = False
+    spf: dict
+    dkim: dict
+    dmarc: dict
+    score: int = 0
+    summary: str = ""
+
+
+@router.get("/domain-auth", response_model=DomainAuthResult)
+def check_domain_auth_endpoint(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """발신 도메인의 SPF/DKIM/DMARC 인증 상태 (실제 DNS 조회)."""
+    from app.services.dns_auth import check_domain_auth
+    settings = db.query(UserSettings).filter(UserSettings.user_id == current_user.id).first()
+    email = settings.gmail_email if settings else None
+    return DomainAuthResult(**check_domain_auth(email))
