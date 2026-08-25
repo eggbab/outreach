@@ -57,7 +57,16 @@ class TestDmQueueContract:
         assert res.status_code == 200
         body = res.json()
         # 확장이 소비하는 정확한 필드 (instagram-dm.js가 읽는 이름)
-        assert set(body.keys()) >= {"targets", "total", "daily_limit", "sent_today"}
+        assert set(body.keys()) >= {
+            "targets", "total", "daily_limit", "sent_today",
+            "hourly_limit", "min_delay_seconds", "max_delay_seconds",
+            "night_block", "max_consecutive_failures",
+        }
+        # 안전 정책 값이 합리적 범위
+        assert body["hourly_limit"] >= 1
+        assert body["min_delay_seconds"] >= 60      # DM 최소 간격 1분 이상
+        assert body["night_block"] is True
+        assert body["max_consecutive_failures"] >= 1
         t = body["targets"][0]
         assert set(t.keys()) >= {"prospect_id", "username", "instagram_pk", "message"}
         assert t["username"] == "seongsu_cafe"
@@ -135,6 +144,30 @@ class TestDmResultContract:
         assert res.status_code == 200
         db_session.refresh(user)
         assert user.credits == start  # 실패는 무과금
+
+    def test_permanent_failure_excluded_from_queue(self, client, auth_headers, project_id, db_session):
+        """계정 없음(영구 실패)은 큐에서 제외 — 무한 재시도 방지."""
+        p = _mk_prospect(db_session, project_id, name="삭제된계정", instagram="deleted_acc")
+        db_session.flush()
+        user = db_session.query(User).first()
+        db_session.add(DmLog(prospect_id=p.id, user_id=user.id, status="failed",
+                             error_message="ACCOUNT_NOT_FOUND"))
+        db_session.commit()
+        res = client.get(f"/api/chrome/dm-queue?project_id={project_id}", headers=auth_headers)
+        assert all(t["username"] != "deleted_acc" for t in res.json()["targets"])
+
+    def test_transient_failure_retried(self, client, auth_headers, project_id, db_session):
+        """일시 실패(네트워크 등)는 큐에 다시 포함 — 재시도 가능."""
+        p = _mk_prospect(db_session, project_id, name="일시오류", instagram="transient_biz")
+        db_session.flush()
+        user = db_session.query(User).first()
+        db_session.add(DmLog(prospect_id=p.id, user_id=user.id, status="failed",
+                             error_message="send_failed_500"))
+        db_session.commit()
+        res = client.get(f"/api/chrome/dm-queue?project_id={project_id}", headers=auth_headers)
+        # 일시 실패는 daily_limit 여유가 있으면 재시도 대상
+        usernames = [t["username"] for t in res.json()["targets"]]
+        assert "transient_biz" in usernames or res.json()["daily_limit"] == 0
 
     def test_cached_pk_returned_in_queue(self, client, auth_headers, project_id, db_session):
         _mk_prospect(db_session, project_id, name="A", instagram="biz_a", instagram_pk="123456")

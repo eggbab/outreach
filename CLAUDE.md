@@ -94,7 +94,9 @@ cd frontend && npm run dev
   - 테스트 135개 통과 (신규 30개 포함)
 - **v5.1 (2026-08-24)**: 카카오 로컬 공식 API 수집 채널 (KAKAO_REST_API_KEY, 파이프라인 최우선·차단 리스크 0), 이메일 MX 검증(email_valid 채움 + 발송 시 invalid 스킵), 수집 파이프라인 중복 호출 버그 수정, GlobalProspect.region 사용 시작, 랜딩 허위 후기/수치 제거(표시광고법) + "왜 Outreach인가" 섹션. 네이버 지도 수집은 응답 가로채기 방식(캡차 우회)
 - **v5.2 인스타 DM 재건 (2026-08-25)**: DM 발송이 구조적으로 0건이던 3대 결함 수정 — (1) username→인스타 PK 해석(content script가 web_profile_info로 조회, Prospect.instagram_pk 캐싱) (2) 큐 payload 계약 정합({prospect_id,username,instagram_pk,message,daily_limit}) (3) dm-result 계약 정합. 안티밴: 스핀택스 변형 실구현(`services/dm_compose.py`, 대상마다 다른 문구), DM 워밍업 서버 강제(chrome.py에서 get_enforced_daily_limit), 발송 시 블랙리스트/전역수신거부 체크, feedback_required/429/checkpoint 구조적 감지 + 6시간 쿨다운. 보안: dm-queue/dm queue IDOR 수정. 핸들 정규화 공용화(`extract.normalize_instagram` — 수집·수동입력·DM큐 일관). DmLog에 message_body·replied_at. DM 워밍업 첫날 0→3(서비스가입일 기준 한계 보정). 크롬확장 heartbeat 알람 추가. 테스트 155개 통과(DM 계약 테스트 신규)
-- 아직 안 한 것: 실배포 실행 (Render/도메인), 계좌이체 외 PG 연동, SMTP 바운스 자동 감지, 공공데이터(인허가) 대량 시딩
+- **v5.3 DM 안전성 강화 (2026-08-25)**: 시간당 한도 확장 강제(큐가 hourly_limit·min/max_delay 전달), 야간(21~08시) 발송 자동 차단(정보통신망법 §50③ + 봇패턴 회피), 연속 실패 3회 시 자동 중단, 삭제/비공개 계정(ACCOUNT_NOT_FOUND) 큐에서 영구 제외(무한재시도 방지). 확장 다운로드 시 서버 BASE_URL을 manifest host_permissions·popup 기본주소에 자동 주입(사용자가 manifest 수동편집 불필요). 리스크 고지 강화(콜드DM 비공식·밴 위험 정직 안내). 테스트 157개.
+  - **인스타 DM 근본 한계(문서화)**: 콜드 DM은 공식 API 불가(먼저 연락한 사용자에게만 허용) → 비공식 방식만 가능 → 분기당 밴 위험 11~17% 존재. 안전장치로 최소화하되 제거 불가. 오래된 계정+소량 발송 권장. DmSendJob(서버측 발송 작업 기록) 없음 — 확장 로컬 상태로 재개하므로 세션 끊김 시 수동 재시작 필요
+- 아직 안 한 것: 실배포 실행 (Render/도메인), 계좌이체 외 PG 연동, SMTP 바운스 자동 감지, 공공데이터(인허가) 대량 시딩, DM 답장 추적(인스타), DmSendJob 서버측 작업 기록
 
 ## 배포
 - **권장: Docker 단일 박스** — `docker compose up -d` (백엔드가 frontend/dist까지 서빙)

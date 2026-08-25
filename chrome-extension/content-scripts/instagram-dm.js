@@ -7,17 +7,25 @@
  */
 
 (() => {
-  const DELAY_MIN = 90;   // 최소 대기(초)
-  const DELAY_MAX = 180;  // 최대 대기(초)
+  // 서버 안전 정책으로 덮어씌워짐 (큐 응답). 아래는 폴백 기본값.
+  let DELAY_MIN = 180;  // 최소 대기(초)
+  let DELAY_MAX = 480;  // 최대 대기(초)
   const IG_APP_ID = '936619743392459';
   const DM_API_URL = 'https://www.instagram.com/api/v1/direct_v2/threads/broadcast/text/';
   const PROFILE_API = 'https://www.instagram.com/api/v1/users/web_profile_info/?username=';
+  const NIGHT_START = 21;  // 21시 이후 발송 금지 (정보통신망법 §50③)
+  const NIGHT_END = 8;     // 08시 이전 발송 금지
 
   let isRunning = false;
   let targets = [];
   let dailyLimit = 15;
+  let hourlyLimit = 5;
+  let nightBlock = true;
+  let maxConsecutiveFailures = 3;
+  let consecutiveFailures = 0;
   let todaySent = 0;
   let sentHistory = new Set();
+  let hourlyTimestamps = [];  // 최근 1시간 발송 시각(ms) — 시간당 한도 계산용
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg.type === 'START_DM_SENDING' && !isRunning) startSending();
@@ -135,32 +143,50 @@
       targets = resp.targets || [];
       dailyLimit = resp.daily_limit || 15;
       todaySent = resp.sent_today != null ? resp.sent_today : todaySent;
+      // 서버 안전 정책 적용
+      hourlyLimit = resp.hourly_limit || hourlyLimit;
+      if (resp.min_delay_seconds) DELAY_MIN = resp.min_delay_seconds;
+      if (resp.max_delay_seconds) DELAY_MAX = resp.max_delay_seconds;
+      if (resp.night_block != null) nightBlock = resp.night_block;
+      if (resp.max_consecutive_failures) maxConsecutiveFailures = resp.max_consecutive_failures;
     } catch (err) {
       stopSending(`대기열 로드 실패: ${err.message}`, true);
+      return;
+    }
+
+    // 야간 발송 차단 (정보통신망법 §50③ — 21~08시 광고성 정보 별도 동의 필요)
+    if (nightBlock && isNightTime()) {
+      stopSending('야간(밤 9시~오전 8시)에는 광고성 DM 발송이 제한됩니다. 낮에 다시 시작하세요.', true);
       return;
     }
 
     targets = targets.filter((t) => !sentHistory.has(String(t.prospect_id)));
     if (targets.length === 0) { notifyComplete('발송할 새 대상이 없습니다.'); isRunning = false; return; }
 
+    consecutiveFailures = 0;
     let idx = 0;
     for (const target of targets) {
       if (!isRunning) break;
       if (todaySent >= dailyLimit) { notifyComplete(`오늘 안전 한도(${dailyLimit}건) 도달`); break; }
+      // 야간 진입 시 중단 (발송 중 자정을 넘긴 경우)
+      if (nightBlock && isNightTime()) { stopSending('야간 시간대 진입 — 계정 보호를 위해 발송을 멈춥니다.', true); return; }
+      // 시간당 한도 — 도달 시 가장 오래된 발송 + 1시간까지 대기
+      await enforceHourlyLimit(idx, targets.length);
+      if (!isRunning) break;
       idx++;
       notifyProgress(idx, targets.length, `@${target.username} 처리 중`);
 
       try {
-        // 1) PK 해석 (서버 캐시가 있으면 그대로, 없으면 조회)
         let pk = target.instagram_pk;
         if (!pk) {
           pk = await resolvePk(target.username);
-          await sleep(2000 + Math.random() * 3000); // 조회-발송 사이 짧은 간격
+          await sleep(2000 + Math.random() * 3000);
         }
 
-        // 2) 발송
         await sendDm(pk, target.message);
         todaySent++;
+        consecutiveFailures = 0;
+        hourlyTimestamps.push(Date.now());
         sentHistory.add(String(target.prospect_id));
         await saveState(today);
 
@@ -190,16 +216,47 @@
           return;
         }
         // 개별 실패 (계정 없음/일시 오류) — 기록하고 계속
+        consecutiveFailures++;
         reportResult({
           prospect_id: target.prospect_id, status: 'failed', error_message: err.message,
         });
         notifyProgress(idx, targets.length, `@${target.username} 실패: ${err.message}`);
+        // 연속 실패가 임계 초과 → 계정/세션 이상 가능성 → 중단
+        if (consecutiveFailures >= maxConsecutiveFailures) {
+          stopSending(`연속 ${consecutiveFailures}회 실패 — 계정/세션 문제일 수 있어 발송을 멈춥니다. 인스타 로그인 상태를 확인하세요.`, true);
+          return;
+        }
+        // 실패 후에도 짧게 쉬어 기계적 재시도 패턴 회피
+        if (isRunning) await sleep(randomDelay());
       }
     }
 
     if (isRunning) notifyComplete('발송 완료');
     isRunning = false;
     await chrome.storage.local.set({ dmSending: false });
+  }
+
+  // 로컬 시각 기준 야간(21~08시) 여부
+  function isNightTime() {
+    const h = new Date().getHours();
+    return h >= NIGHT_START || h < NIGHT_END;
+  }
+
+  // 시간당 한도 강제 — 최근 1시간 발송 수가 한도에 닿으면 가장 오래된 발송 +1시간까지 대기
+  async function enforceHourlyLimit(idx, total) {
+    const oneHourAgo = Date.now() - 60 * 60 * 1000;
+    hourlyTimestamps = hourlyTimestamps.filter((t) => t > oneHourAgo);
+    if (hourlyTimestamps.length >= hourlyLimit) {
+      const waitMs = hourlyTimestamps[0] + 60 * 60 * 1000 - Date.now();
+      if (waitMs > 0) {
+        const mins = Math.ceil(waitMs / 60000);
+        notifyProgress(idx, total, `시간당 안전 한도(${hourlyLimit}건) 도달 — ${mins}분 대기`);
+        // 야간 진입 방지를 위해 최대 대기는 15분 단위로 쪼개 확인
+        const step = Math.min(waitMs, 15 * 60 * 1000);
+        await sleep(step);
+        if (isRunning) await enforceHourlyLimit(idx, total);
+      }
+    }
   }
 
   function stopSending(reason, isError) {

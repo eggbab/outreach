@@ -118,14 +118,24 @@ export default function ExtensionGuidePage() {
         <div className="flex items-start gap-3">
           <AlertTriangle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
           <div>
-            <h3 className="font-semibold text-red-900 mb-2">계정 정지 방지 — 꼭 지켜주세요</h3>
+            <h3 className="font-semibold text-red-900 mb-2">계정 정지 위험 — 반드시 읽어주세요</h3>
+            <p className="text-sm text-red-800 mb-2">
+              인스타그램 <strong>콜드 DM은 인스타 정책 위반</strong>이라 계정 정지 위험이 항상 존재합니다.
+              공식 API는 "먼저 연락한 사람에게만" 허용하므로 신규 영업 DM에는 쓸 수 없어,
+              이 방식이 유일한 길이지만 위험이 따릅니다. <strong>버리는 계정이 아닌 소중한 본계정 사용은 피하세요.</strong>
+            </p>
+            <p className="text-sm font-medium text-red-900 mb-1">확장이 자동으로 지키는 안전장치:</p>
+            <ul className="text-sm text-red-800 space-y-1.5 list-disc list-inside mb-2">
+              <li>시간당·일일 한도 강제 (신규 계정은 첫날 3건부터 서서히 증가)</li>
+              <li>발송 간격 3~8분 랜덤 + 수신자마다 다른 문구(자동 변형)</li>
+              <li><strong>야간(밤 9시~오전 8시) 발송 자동 금지</strong> (정보통신망법 + 밤 발송은 봇 패턴)</li>
+              <li>인스타 제한 신호 감지 시 즉시 중단 + 6시간 대기, 연속 실패 시 자동 정지</li>
+            </ul>
+            <p className="text-sm font-medium text-red-900 mb-1">직접 지켜주세요:</p>
             <ul className="text-sm text-red-800 space-y-1.5 list-disc list-inside">
-              <li><strong>신규 계정은 첫 2주간 DM 금지</strong> — 일반 활동만 (팔로우/좋아요/댓글)</li>
-              <li><strong>일일 한도 15건 이하</strong> — 성숙 계정도 30건 이하 권장</li>
-              <li>발송 간격 <strong>3~8분</strong> — 확장이 자동으로 랜덤 적용</li>
-              <li>똑같은 메시지 반복 X — 시스템이 자동으로 인사말/마무리 미세 변형</li>
-              <li>스팸 신고 받으면 즉시 멈추세요. 확장이 감지하면 자동 중단</li>
+              <li><strong>오래 사용한 계정 + 소량 발송</strong>이 가장 안전 (갓 만든 계정은 위험)</li>
               <li>메시지에 <strong>링크 포함하면 차단 위험 급증</strong></li>
+              <li>다른 인스타 자동화 도구와 <strong>함께 쓰지 마세요</strong></li>
               <li>이 도구로 인한 계정 정지는 사용자 책임입니다 (이용약관 참조)</li>
             </ul>
           </div>
