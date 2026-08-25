@@ -133,6 +133,22 @@ class TestDmResultContract:
         log = db_session.query(DmLog).filter(DmLog.prospect_id == p.id).first()
         assert log.message_body == "안녕하세요 A님"
 
+    def test_no_credits_success_downgraded_to_failed(self, client, auth_headers, project_id, db_session):
+        """크레딧 부족 시 확장이 success 보고해도 무과금 발송을 인정하지 않음."""
+        user = db_session.query(User).first()
+        user.credits = 1  # DM 1건(3크레딧) 부족
+        p = _mk_prospect(db_session, project_id, name="A", instagram="biz_a")
+        db_session.commit()
+        res = client.post("/api/chrome/dm-result", headers=auth_headers, json={
+            "prospect_id": p.id, "status": "success", "message_body": "안녕",
+        })
+        assert res.status_code == 200
+        assert res.json()["status"] == "failed"  # success → failed로 강등
+        db_session.refresh(user)
+        db_session.refresh(p)
+        assert user.credits == 1        # 차감 안 됨
+        assert p.status != "dm_sent"    # 발송 미확정
+
     def test_failed_result_no_charge(self, client, auth_headers, project_id, db_session):
         user = db_session.query(User).first()
         start = user.credits

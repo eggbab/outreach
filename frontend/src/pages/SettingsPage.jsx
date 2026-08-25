@@ -444,10 +444,16 @@ export default function SettingsPage() {
         {/* Deliverability Checker */}
         <DeliverabilityChecker />
 
-        {/* Kakao - coming soon */}
+        {/* Kakao messaging - roadmap */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h2 className="text-base font-semibold text-gray-900 mb-2">카카오톡 연동</h2>
-          <p className="text-sm text-gray-400">준비 중입니다. 곧 카카오톡 알림톡/친구톡 연동을 지원합니다.</p>
+          <h2 className="text-base font-semibold text-gray-900 mb-2 flex items-center gap-2">
+            카카오톡 발송
+            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">로드맵</span>
+          </h2>
+          <p className="text-sm text-gray-400">
+            카카오톡 알림톡/친구톡 발송은 아직 지원하지 않습니다 (개발 예정).
+            현재 카카오는 <strong>업체 수집 채널</strong>로만 사용됩니다.
+          </p>
         </div>
 
         <div className="pb-8" />

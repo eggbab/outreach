@@ -177,14 +177,24 @@ def approve_payment_request(
     if pr.status != "pending":
         raise HTTPException(status_code=400, detail=f"이미 {pr.status} 처리된 요청입니다")
 
+    # 원자적 상태 전이 — 동시 승인 시 하나만 성공(이중 충전 방지)
+    from sqlalchemy import update
+    result = db.execute(
+        update(PaymentRequest)
+        .where(PaymentRequest.id == request_id, PaymentRequest.status == "pending")
+        .values(status="approved", approved_by_admin_id=admin.id,
+                approved_at=datetime.now(timezone.utc))
+    )
+    if result.rowcount == 0:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="이미 처리된 요청입니다 (동시 처리 감지)")
+
+    # 상태 전이에 성공한 요청만 크레딧 지급
     add_credits(
         db, pr.user_id, pr.credits,
         f"계좌이체 충전: {pr.package_label} (입금자: {pr.depositor_name})",
         tx_type="purchase",
     )
-    pr.status = "approved"
-    pr.approved_by_admin_id = admin.id
-    pr.approved_at = datetime.now(timezone.utc)
     db.commit()
     return {"message": "승인되었습니다", "credits_added": pr.credits}
 

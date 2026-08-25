@@ -29,6 +29,16 @@ _ADDED_ENUM_VALUES = [
     ("enrollment_status", "stopped"),
 ]
 
+# 자주 필터하는 컬럼 인덱스 — (인덱스명, 테이블, 컬럼들). 대량 데이터에서 seq scan 방지.
+_INDEXES = [
+    ("ix_prospects_project_status", "prospects", "project_id, status"),
+    ("ix_prospects_project_id", "prospects", "project_id"),
+    ("ix_email_logs_user_status", "email_logs", "user_id, status"),
+    ("ix_email_logs_prospect_id", "email_logs", "prospect_id"),
+    ("ix_dm_logs_user_status", "dm_logs", "user_id, status"),
+    ("ix_dm_logs_prospect_id", "dm_logs", "prospect_id"),
+]
+
 
 def sync_schema(engine: Engine) -> None:
     """누락 테이블 생성 + 누락 컬럼/enum 값 추가. 멱등."""
@@ -47,6 +57,17 @@ def sync_schema(engine: Engine) -> None:
             conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}"))
             conn.commit()
             logger.info(f"schema_sync: {table}.{column} 컬럼 추가")
+
+        # 인덱스 생성 (멱등 — IF NOT EXISTS)
+        table_names = set(inspector.get_table_names())
+        for idx_name, table, cols in _INDEXES:
+            if table not in table_names:
+                continue
+            try:
+                conn.execute(text(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table} ({cols})"))
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"schema_sync: 인덱스 {idx_name} 생성 실패 (무시): {e}")
 
         if is_postgres:
             for enum_name, value in _ADDED_ENUM_VALUES:

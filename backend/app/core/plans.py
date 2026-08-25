@@ -8,6 +8,7 @@
 """
 from datetime import date
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 # ──────────────────────────────────────
@@ -133,45 +134,61 @@ def check_credits(db: Session, user_id: int, action: str, count: int = 1) -> dic
 
 
 def deduct_credits(db: Session, user_id: int, amount: int, description: str):
-    """크레딧 차감 + 거래 내역 기록"""
+    """크레딧 차감 + 거래 내역 기록.
+
+    원자적 조건부 UPDATE(`credits = credits - n WHERE credits >= n`)로 동시 차감 시
+    lost update / 음수 잔액을 방지한다. 잔액 부족이면 아무것도 하지 않고 None 반환.
+    """
+    from sqlalchemy import update
     from app.models.models import CreditTransaction, User
 
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user or user.credits < amount:
+    if amount <= 0:
         return None
 
-    user.credits -= amount
-    tx = CreditTransaction(
-        user_id=user_id,
-        amount=-amount,
-        balance_after=user.credits,
-        description=description,
-        tx_type="deduct",
+    # 조건부 원자 차감 — 두 동시 요청이 동시에 통과할 수 없음
+    result = db.execute(
+        update(User)
+        .where(User.id == user_id, User.credits >= amount)
+        .values(credits=User.credits - amount)
     )
-    db.add(tx)
+    if result.rowcount == 0:
+        return None  # 유저 없음 또는 잔액 부족
+
+    # 갱신된 잔액을 다시 읽어 거래 내역 기록 (동일 트랜잭션 내라 방금 UPDATE 반영됨)
+    new_balance = db.execute(
+        select(User.credits).where(User.id == user_id)
+    ).scalar_one()
+    db.add(CreditTransaction(
+        user_id=user_id, amount=-amount, balance_after=new_balance,
+        description=description, tx_type="deduct",
+    ))
     db.flush()
-    return user.credits
+    return new_balance
 
 
 def add_credits(db: Session, user_id: int, amount: int, description: str, tx_type: str = "purchase"):
-    """크레딧 추가 + 거래 내역 기록"""
+    """크레딧 추가 + 거래 내역 기록 (원자적 UPDATE)."""
+    from sqlalchemy import update
     from app.models.models import CreditTransaction, User
 
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
+    if amount <= 0:
         return None
 
-    user.credits += amount
-    tx = CreditTransaction(
-        user_id=user_id,
-        amount=amount,
-        balance_after=user.credits,
-        description=description,
-        tx_type=tx_type,
+    result = db.execute(
+        update(User).where(User.id == user_id).values(credits=User.credits + amount)
     )
-    db.add(tx)
+    if result.rowcount == 0:
+        return None
+
+    new_balance = db.execute(
+        select(User.credits).where(User.id == user_id)
+    ).scalar_one()
+    db.add(CreditTransaction(
+        user_id=user_id, amount=amount, balance_after=new_balance,
+        description=description, tx_type=tx_type,
+    ))
     db.flush()
-    return user.credits
+    return new_balance
 
 
 # ──────────────────────────────────────

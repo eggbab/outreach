@@ -113,8 +113,8 @@ export default function LandingPage() {
             {[
               { value: 5, suffix: '개', label: '수집 소스' },
               { value: 3, suffix: '채널', label: '발송 채널' },
-              { value: 80, suffix: '%', label: '시간 절약' },
-              { value: 3, suffix: 'x', label: '응답률 향상' },
+              { value: 30, suffix: 'cr', label: '가입 무료 크레딧' },
+              { value: 0, suffix: '원', label: '월 구독료' },
             ].map((m, i) => (
               <RevealSection key={m.label} delay={i * 150}>
                 <div className="text-center">
@@ -167,7 +167,7 @@ export default function LandingPage() {
             {[
               { step: '01', title: '수집', desc: '5개 소스에서 키워드 기반 잠재고객 자동 수집', color: 'border-blue-200 bg-blue-50/50', hover: 'hover:border-blue-400 hover:bg-blue-50' },
               { step: '02', title: '발송', desc: '이메일 시퀀스 + 인스타 DM 멀티채널 아웃리치', color: 'border-purple-200 bg-purple-50/50', hover: 'hover:border-purple-400 hover:bg-purple-50' },
-              { step: '03', title: '분석', desc: '열람/클릭 트래킹, 스코어링, A/B 테스트', color: 'border-green-200 bg-green-50/50', hover: 'hover:border-green-400 hover:bg-green-50' },
+              { step: '03', title: '분석', desc: '열람/클릭 트래킹, 리드 스코어링, 문구 자동 변형', color: 'border-green-200 bg-green-50/50', hover: 'hover:border-green-400 hover:bg-green-50' },
               { step: '04', title: '클로징', desc: '파이프라인, 제안서, 미팅 예약으로 딜 성사', color: 'border-orange-200 bg-orange-50/50', hover: 'hover:border-orange-400 hover:bg-orange-50' },
             ].map((item, i) => (
               <RevealSection key={item.step} delay={i * 120 + 400}>
@@ -199,7 +199,7 @@ export default function LandingPage() {
                     네이버 검색, 구글, 인스타그램, 네이버쇼핑, 네이버지도에서 업종 키워드 기반으로 업체 정보를 수집합니다.
                   </p>
                   <ul className="space-y-2">
-                    {['플랜별 일일 수집 한도 관리', 'AI 스코어링으로 유망 고객 우선순위화', '태그 분류 + CSV 내보내기'].map((f) => (
+                    {['플랜별 일일 수집 한도 관리', '리드 스코어링으로 유망 고객 우선순위화', '태그 분류 + CSV 내보내기'].map((f) => (
                       <li key={f} className="flex items-center gap-2 text-sm text-gray-600">
                         <span className="w-1 h-1 rounded-full bg-blue-500" />{f}
                       </li>
@@ -267,7 +267,7 @@ export default function LandingPage() {
                     미열람·미클릭 고객에게만 보내는 조건 분기로 응답률을 극대화하세요.
                   </p>
                   <ul className="space-y-2">
-                    {['단계별 대기 일수 + 발송 조건 설정', 'A/B 변형 테스트로 최적 제목 찾기', '발송 건강도 스코어로 스팸 방지'].map((f) => (
+                    {['단계별 대기 일수 + 발송 조건 설정', '수신자별 문구 자동 변형으로 스팸 회피', '발송 건강도 스코어로 스팸 방지'].map((f) => (
                       <li key={f} className="flex items-center gap-2 text-sm text-gray-600">
                         <span className="w-1 h-1 rounded-full bg-purple-500" />{f}
                       </li>
@@ -412,7 +412,7 @@ export default function LandingPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {[
-              { title: '이메일 템플릿', desc: '재사용 가능한 템플릿 라이브러리. A/B 변형으로 최적의 제목과 본문을 찾으세요.' },
+              { title: '이메일 템플릿', desc: '재사용 가능한 템플릿 라이브러리. 수신자마다 문구가 자동 변형되어 스팸 패턴을 피합니다.' },
               { title: '발송 건강도 체크', desc: '스팸 키워드, 제목 길이, 수신거부 포함 여부를 자동으로 점검합니다.' },
               { title: '잠재고객 스코어링', desc: '연락처 보유 여부, 이메일 열람, 클릭 등을 기반으로 유망도를 자동 계산합니다.' },
               { title: '태그 & 메모', desc: '잠재고객에 태그를 붙이고 메모를 남겨 체계적으로 관리하세요.' },

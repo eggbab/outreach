@@ -12,6 +12,7 @@ import {
   Calendar,
   Eye,
   MousePointer,
+  Reply,
 } from 'lucide-react'
 // OnboardingGuide moved to Layout.jsx
 
@@ -24,6 +25,7 @@ export default function DashboardPage() {
     dms_sent: 0,
     emails_opened: 0,
     emails_clicked: 0,
+    emails_replied: 0,
   })
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
@@ -86,6 +88,7 @@ export default function DashboardPage() {
     { label: 'DM 발송', value: stats.dms_sent, icon: MessageCircle, color: 'text-orange-600 bg-orange-50' },
     { label: '이메일 열람', value: stats.emails_opened, icon: Eye, color: 'text-violet-600 bg-violet-50' },
     { label: '링크 클릭', value: stats.emails_clicked, icon: MousePointer, color: 'text-teal-600 bg-teal-50' },
+    { label: '답장 (전환)', value: stats.emails_replied, icon: Reply, color: 'text-emerald-600 bg-emerald-50' },
   ]
 
   if (loading) {

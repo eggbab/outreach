@@ -38,6 +38,7 @@ class FunnelResponse(BaseModel):
     dm_sent: int = 0
     opened: int = 0
     clicked: int = 0
+    replied: int = 0
 
 
 class ComparisonResponse(BaseModel):
@@ -212,6 +213,11 @@ def get_funnel(
         .filter(EmailLog.prospect_id.in_(prospect_ids), EmailLog.clicked_at.isnot(None))
         .scalar() or 0
     )
+    replied = (
+        db.query(func.count(func.distinct(Prospect.id)))
+        .filter(Prospect.project_id == project_id, Prospect.status == "replied")
+        .scalar() or 0
+    )
 
     return FunnelResponse(
         collected=collected,
@@ -220,6 +226,7 @@ def get_funnel(
         dm_sent=dm_sent,
         opened=opened,
         clicked=clicked,
+        replied=replied,
     )
 
 

@@ -17,6 +17,7 @@ class DashboardStats(BaseModel):
     dms_sent: int = 0
     emails_opened: int = 0
     emails_clicked: int = 0
+    emails_replied: int = 0   # 답장 = 실제 전환 신호
 
 
 @router.get("/stats", response_model=DashboardStats)
@@ -76,6 +77,16 @@ def get_dashboard_stats(
         or 0
     )
 
+    emails_replied = (
+        db.query(func.count(EmailLog.id))
+        .filter(
+            EmailLog.user_id == current_user.id,
+            EmailLog.replied_at.isnot(None),
+        )
+        .scalar()
+        or 0
+    )
+
     return DashboardStats(
         total_projects=total_projects,
         total_prospects=total_prospects,
@@ -83,4 +94,5 @@ def get_dashboard_stats(
         dms_sent=dms_sent,
         emails_opened=emails_opened,
         emails_clicked=emails_clicked,
+        emails_replied=emails_replied,
     )

@@ -242,6 +242,19 @@ def process_replies():
         db.close()
 
 
+def reap_stale_jobs_job():
+    """장시간 running으로 멈춘 작업 주기 정리 (hang 방지)."""
+    db = SessionLocal()
+    try:
+        from app.core.job_reaper import reap_stale_jobs
+        reap_stale_jobs(db, startup=False)
+    except Exception as e:
+        logger.error(f"Error in reap_stale_jobs job: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 def process_scheduled_emails():
     """Check for scheduled email sends and trigger them when due."""
     db = SessionLocal()
@@ -279,6 +292,7 @@ def start_scheduler():
     scheduler.add_job(compute_keyword_performances_job, "interval", hours=1, id="compute_keyword_perf", replace_existing=True)
     scheduler.add_job(process_scheduled_emails, "interval", minutes=1, id="process_scheduled_emails", replace_existing=True)
     scheduler.add_job(process_replies, "interval", minutes=15, id="process_replies", replace_existing=True)
+    scheduler.add_job(reap_stale_jobs_job, "interval", minutes=30, id="reap_stale_jobs", replace_existing=True)
     scheduler.start()
     logger.info("Background scheduler started")
 

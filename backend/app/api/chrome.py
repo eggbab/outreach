@@ -196,22 +196,29 @@ def report_dm_result(
     if req.instagram_pk and not prospect.instagram_pk:
         prospect.instagram_pk = req.instagram_pk[:50]
 
+    effective_status = req.status
+    error_message = req.error_message
+
+    if req.status == "success":
+        # 원자적 차감 — 성공하면 발송 확정, 실패(잔액 부족)면 무과금 발송을 인정하지 않음
+        from app.core.plans import CREDIT_COSTS, deduct_credits
+        remaining = deduct_credits(
+            db, current_user.id, CREDIT_COSTS["dm"], f"DM 발송: @{prospect.instagram}"
+        )
+        if remaining is not None:
+            prospect.status = "dm_sent"
+        else:
+            # 크레딧 부족 — success로 기록하지 않음(무과금 발송 방지). failed로 남겨 재큐잉 가능.
+            effective_status = "failed"
+            error_message = (error_message or "") + " 크레딧 부족으로 미확정"
+
     log = DmLog(
         prospect_id=req.prospect_id,
         user_id=current_user.id,
-        status=req.status,
-        error_message=req.error_message,
+        status=effective_status,
+        error_message=error_message,
         message_body=req.message_body,
     )
     db.add(log)
-
-    if req.status == "success":
-        prospect.status = "dm_sent"
-        from app.core.plans import CREDIT_COSTS, deduct_credits, check_credits
-        if check_credits(db, current_user.id, "dm", 1)["allowed"]:
-            deduct_credits(db, current_user.id, CREDIT_COSTS["dm"], f"DM 발송: @{prospect.instagram}")
-        else:
-            log.error_message = (log.error_message or "") + " (warning: credits exhausted)"
-
     db.commit()
-    return {"message": "DM result recorded", "status": req.status}
+    return {"message": "DM result recorded", "status": effective_status}

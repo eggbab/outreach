@@ -225,6 +225,10 @@ def send_bulk_emails(
             custom_template=email_template,
         )
 
+        # 스핀택스 변형 — 수신자마다 문구를 조금씩 다르게(동일 문구 대량발송 = 스팸 패턴)
+        from app.services.dm_compose import expand_spintax
+        html_body = expand_spintax(html_body, prospect.id)
+
         # Wrap links for click tracking
         def _wrap_link(match):
             original_url = match.group(1)
@@ -250,9 +254,10 @@ def send_bulk_emails(
         else:
             html_body += tracking_pixel
 
-        # 사용자 설정 제목 (없으면 한국어 기본) + 변수 치환 + (광고) 표기
+        # 사용자 설정 제목 (없으면 한국어 기본) + 변수 치환 + 스핀택스 변형 + (광고) 표기
         raw_subject = email_subject or "안녕하세요, {company_name}님께 제안 드립니다"
         subject = render_template(raw_subject, company_name, category, sender_name)
+        subject = expand_spintax(subject, prospect.id)
         subject = apply_ad_prefix(subject, ad_prefix_enabled)
 
         success = send_email(

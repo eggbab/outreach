@@ -28,6 +28,11 @@ def _pick(options: list[str], seed: int) -> str:
     return options[seed % len(options)]
 
 
+def expand_spintax(text: str, seed: int) -> str:
+    """`{a|b|c}` 패턴을 seed 기반으로 하나씩 치환. 이메일·DM 공용."""
+    return _expand_spintax(text, seed)
+
+
 def _expand_spintax(text: str, seed: int) -> str:
     """`{a|b|c}` 패턴을 seed 기반으로 하나씩 치환. 중첩 없음 가정."""
     counter = [seed]

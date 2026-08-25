@@ -122,17 +122,52 @@ def send_proposal(
     if not proposal:
         raise HTTPException(status_code=404, detail="Proposal not found")
     now = datetime.now(timezone.utc)
+
+    if not proposal.tracking_id:
+        proposal.tracking_id = secrets.token_hex(16)
+
+    # 잠재고객 이메일 + Gmail 설정이 있으면 추적 링크가 담긴 메일을 실제 발송
+    from app.core.config import settings as app_settings
+    from app.models.models import Prospect, UserSettings
+    prospect = db.query(Prospect).filter(Prospect.id == proposal.prospect_id).first()
+    user_settings = db.query(UserSettings).filter(UserSettings.user_id == current_user.id).first()
+
+    emailed = False
+    if (prospect and prospect.email and user_settings
+            and user_settings.gmail_email and user_settings.gmail_app_password_encrypted):
+        from app.core.security import decrypt_value
+        from app.services.sender.email import send_email
+        view_url = f"{app_settings.BASE_URL}/api/proposals/view/{proposal.tracking_id}"
+        html = (
+            f'<p>{prospect.name or "고객"}님, 제안서를 보내드립니다.</p>'
+            f'<p><a href="{view_url}" style="display:inline-block;padding:12px 24px;'
+            f'background:#2563eb;color:#fff;border-radius:8px;text-decoration:none;">'
+            f'제안서 보기: {proposal.title}</a></p>'
+            f'<p>링크: {view_url}</p>'
+        )
+        try:
+            gmail_pw = decrypt_value(user_settings.gmail_app_password_encrypted)
+            emailed = send_email(
+                gmail_email=user_settings.gmail_email,
+                gmail_app_password=gmail_pw,
+                to_email=prospect.email,
+                subject=f"[제안서] {proposal.title}",
+                html_body=html,
+            )
+        except Exception:
+            emailed = False
+
     proposal.status = "sent"
     proposal.sent_at = now
 
-    activity = Activity(
+    desc = f"제안서 발송: {proposal.title}" + ("" if emailed else " (이메일 미발송 — 링크 수동 전달 필요)")
+    db.add(Activity(
         user_id=current_user.id,
         prospect_id=proposal.prospect_id,
         activity_type="proposal_sent",
         reference_id=proposal.id,
-        description=f"제안서 발송: {proposal.title}",
-    )
-    db.add(activity)
+        description=desc,
+    ))
     db.commit()
     db.refresh(proposal)
     return proposal

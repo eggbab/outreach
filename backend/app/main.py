@@ -80,6 +80,17 @@ async def lifespan(app: FastAPI):
         sync_schema(engine)
     except Exception:
         logging.getLogger(__name__).exception("schema sync failed — starting anyway")
+    # 재시작으로 죽은 채 running으로 남은 작업 정리 (수집 영구 차단 방지)
+    try:
+        from app.core.database import SessionLocal
+        from app.core.job_reaper import reap_stale_jobs
+        _db = SessionLocal()
+        try:
+            reap_stale_jobs(_db, startup=True)
+        finally:
+            _db.close()
+    except Exception:
+        logging.getLogger(__name__).exception("job reaper failed — starting anyway")
     try:
         start_scheduler()
     except Exception:

@@ -96,7 +96,16 @@ cd frontend && npm run dev
 - **v5.2 인스타 DM 재건 (2026-08-25)**: DM 발송이 구조적으로 0건이던 3대 결함 수정 — (1) username→인스타 PK 해석(content script가 web_profile_info로 조회, Prospect.instagram_pk 캐싱) (2) 큐 payload 계약 정합({prospect_id,username,instagram_pk,message,daily_limit}) (3) dm-result 계약 정합. 안티밴: 스핀택스 변형 실구현(`services/dm_compose.py`, 대상마다 다른 문구), DM 워밍업 서버 강제(chrome.py에서 get_enforced_daily_limit), 발송 시 블랙리스트/전역수신거부 체크, feedback_required/429/checkpoint 구조적 감지 + 6시간 쿨다운. 보안: dm-queue/dm queue IDOR 수정. 핸들 정규화 공용화(`extract.normalize_instagram` — 수집·수동입력·DM큐 일관). DmLog에 message_body·replied_at. DM 워밍업 첫날 0→3(서비스가입일 기준 한계 보정). 크롬확장 heartbeat 알람 추가. 테스트 155개 통과(DM 계약 테스트 신규)
 - **v5.3 DM 안전성 강화 (2026-08-25)**: 시간당 한도 확장 강제(큐가 hourly_limit·min/max_delay 전달), 야간(21~08시) 발송 자동 차단(정보통신망법 §50③ + 봇패턴 회피), 연속 실패 3회 시 자동 중단, 삭제/비공개 계정(ACCOUNT_NOT_FOUND) 큐에서 영구 제외(무한재시도 방지). 확장 다운로드 시 서버 BASE_URL을 manifest host_permissions·popup 기본주소에 자동 주입(사용자가 manifest 수동편집 불필요). 리스크 고지 강화(콜드DM 비공식·밴 위험 정직 안내). 테스트 157개.
   - **인스타 DM 근본 한계(문서화)**: 콜드 DM은 공식 API 불가(먼저 연락한 사용자에게만 허용) → 비공식 방식만 가능 → 분기당 밴 위험 11~17% 존재. 안전장치로 최소화하되 제거 불가. 오래된 계정+소량 발송 권장. DmSendJob(서버측 발송 작업 기록) 없음 — 확장 로컬 상태로 재개하므로 세션 끊김 시 수동 재시작 필요
-- 아직 안 한 것: 실배포 실행 (Render/도메인), 계좌이체 외 PG 연동, SMTP 바운스 자동 감지, 공공데이터(인허가) 대량 시딩, DM 답장 추적(인스타), DmSendJob 서버측 작업 기록
+- **v5.4 데이터무결성·기능완성 (2026-08-25)**: 감사 2건(데이터무결성/기능완성)으로 발견한 P0·죽은기능 수정.
+  - **P0 크레딧 원자성**: deduct/add_credits를 원자적 조건부 UPDATE로 (동시 수집+발송 시 lost update/음수/이중차감 방지)
+  - **P0 stuck-running reaper**: `core/job_reaper.py` — 재시작 시 running으로 멈춘 CollectionJob/EmailSendJob을 failed 정리(수집 영구차단 방지) + 스케줄러 30분 주기 재확인
+  - **P0 결제 이중승인 방지**: payment approve를 조건부 UPDATE로 멱등화, DM dm-result에서 크레딧 부족 시 success→failed 강등(무과금 발송 차단)
+  - **거짓광고 제거**: "AI 스코어링"→"리드 스코어링", "A/B 테스트"→"수신자별 문구 자동 변형"(실구현: 이메일 발송에 스핀택스 적용), Hero 허위수치 제거, 카카오 발송=로드맵 명시
+  - **죽은 기능 연결**: 제안서 send가 추적링크 담긴 실제 이메일 발송, 답장률(replied)을 대시보드·funnel에 추가(실제 전환신호)
+  - **인덱스**: prospects(project_id,status)·email_logs(user_id,status)·dm_logs 등 hot 컬럼 인덱스(schema_sync)
+  - 테스트 167개
+- **알려진 미해결(감사 기록)**: A/B 통계 대시보드 완전구현(발송 흐름+UI 재설계 필요), TeamProject 접근제어 미연결(에이전시 공유 불가)·크레딧 풀링 없음, 미팅 확인/리마인더 메일, 바운스 감지, best-send-time 개인화, 알림/할일 시스템
+- 아직 안 한 것: 실배포 실행, 계좌이체 외 PG, DM 답장추적(인스타), DmSendJob 서버측 기록
 
 ## 배포
 - **권장: Docker 단일 박스** — `docker compose up -d` (백엔드가 frontend/dist까지 서빙)
@@ -228,18 +237,7 @@ cd frontend && npm run dev
 
 ## 스킬을 먼저 확인한다
 
-- 요청을 받으면 **설치된 스킬 중 그 작업에 맞는 것이 있는지 먼저 확인한다.** 있으면 "이건 `/스킬명`으로 하겠습니다 — 이유" 한 줄을 붙이고 그 스킬을 호출해서 진행한다. 추천만 하고 멈추지 않는다.
-- 사용자가 이미 `/명령어`로 부른 경우엔 추천하지 않는다.
-- 맞는 스킬이 없으면 아무 말 없이 그냥 처리한다. 억지로 갖다 붙이지 않는다.
-- **미설치 스킬·플러그인도 추천 대상이다. 공식이든 커뮤니티든 가리지 않는다.**
-- **조회 대상은 `~/.claude/skill-catalog-measured.tsv` 하나다** — 마켓 11곳 카탈로그 2,709개에 측정값(별점·코드검색·설치횟수)을 붙인 표. `awk -F'\t'` 로 훑으면 끝난다. 판단 기준과 지표의 한계는 `~/.claude/popular-claude-skills.md` 에 있다. 여기 없는 것만 웹으로 찾는다.
-- **인기도(사용량)는 공식·커뮤니티 모두에 똑같이 적용한다.** 많이 쓰인다는 것이 유용성이자 안정성의 방증이다. 설치 횟수가 있으면 그것, 없으면 별점 — **실측**한다(디렉터리 사이트 별점은 실제와 크게 다르다).
-- **출처는 '안전성'에만 쓴다.** 공식(`claude-plugins-official`·`anthropic-agent-skills`·`claude-community`)은 그대로 추천. 커뮤니티는 **남의 지시문이 Claude 행동을 바꾸고 훅이 명령을 실행한다는 점을 설치 권할 때 함께 알린다.**
-- **추천까지만 하고 설치는 사용자가 결정한다.** 미설치 항목을 임의로 설치하지 않는다. (설치된 스킬 호출은 이 제한과 무관 — 바로 실행한다.)
-- **추천 전 3가지를 확인한다:** ① 그 도구가 실제로 뭘 하는지 파일을 열어볼 것 ② 이 프로젝트가 그 기능을 실제로 쓰는지 `grep` 으로 확인할 것(단어만 등장 ≠ 실사용) ③ 실행 준비물이 깔려 있는지 확인할 것(설치됨 ≠ 작동함).
-- **운영 환경에 닿는 MCP는 기본적으로 추천하지 않는다.** 이 프로젝트는 Supabase(PostgreSQL)를 쓰므로 DB 직결 MCP는 특히 주의.
-- 카탈로그에도 없으면 웹에서 찾아 알린다.
-- **카탈로그 갱신은 사용자가 요청할 때만 한다.** 자동 갱신 훅을 걸지 않는다. 갱신 절차는 `skill-catalog-refresh` 스킬에 있다.
-- 이 항목은 "물어본 것만 답한다" 원칙의 유일한 예외다.
+**규칙 전문은 `~/.claude/CLAUDE.md` 에 있다**(모든 프로젝트 공통, 자동 로드). 여기에 복사해두지 않는다.
 
-> **적합성 판단 기준(이 프로젝트):** Python 3.13 · FastAPI · SQLAlchemy · PostgreSQL(Supabase) · JWT/bcrypt · React + Vite + Tailwind · 크롬 확장(Manifest V3) · Instagram Private API.
+> **이 프로젝트 적합성 기준:** Python 3.13(backend/venv) · FastAPI · SQLAlchemy · PostgreSQL(Supabase) · JWT/bcrypt · beautifulsoup4 · apscheduler · React + Vite + Tailwind · react-three-fiber · 크롬 확장(Manifest V3) · Instagram Private API
+> **중복 확인 대상:** 명령어 `/build` `/db-reset` `/dev` `/status` `/test-backend`
