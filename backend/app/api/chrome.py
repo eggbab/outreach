@@ -1,34 +1,76 @@
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models.models import DmLog, Project, Prospect, User
+from app.models.models import DmLog, Project, Prospect, User, UserSettings
+from app.services.collector.extract import normalize_instagram
+from app.services.compliance import is_email_suppressed
+from app.services.dm_compose import render_dm
 
 router = APIRouter(prefix="/api/chrome", tags=["chrome"])
 
+DEFAULT_DM_TEMPLATE = (
+    "{안녕하세요|반갑습니다} {company}님, 좋은 기회로 연락드립니다.\n\n"
+    "{협업 가능성을 논의드리고 싶어|함께 할 수 있는 부분이 있을 것 같아} 메시지 드립니다. "
+    "관심 있으시면 편하게 회신 부탁드립니다."
+)
+
 
 class DmTarget(BaseModel):
+    # 확장이 이 형태를 그대로 소비 — 필드명 변경 시 content script도 함께 수정
     prospect_id: int
+    username: str
+    instagram_pk: Optional[str] = None  # 캐시된 값 (없으면 확장이 해석)
+    message: str                         # 개인화 + 변형 완료된 최종 문구
     name: Optional[str] = None
-    instagram: str
-    category: Optional[str] = None
-
-    model_config = {"from_attributes": True}
 
 
 class DmQueueResponse(BaseModel):
     targets: list[DmTarget]
     total: int
+    daily_limit: int
+    sent_today: int
 
 
 class DmResultRequest(BaseModel):
     prospect_id: int
     status: str  # success or failed
     error_message: Optional[str] = None
+    message_body: Optional[str] = None
+    instagram_pk: Optional[str] = None  # 확장이 해석한 PK — 캐싱용
+    stop_reason: Optional[str] = None   # feedback_required/checkpoint 등 — 전체 중단 신호
+
+
+def _dm_daily_limit(user: User, settings: UserSettings | None) -> int:
+    """DM 일일 한도 — 사용자 설정을 계정 나이 기반 워밍업으로 캡 (서버 강제)."""
+    from app.core.plans import get_enforced_daily_limit
+
+    user_limit = settings.daily_dm_limit if settings else 15
+    created = user.created_at
+    if created and created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+    age_days = (datetime.now(timezone.utc) - created).days if created else 0
+    return get_enforced_daily_limit("dm", age_days, user_limit)
+
+
+def _sent_today(db: Session, user_id: int) -> int:
+    start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    return (
+        db.query(func.count(DmLog.id))
+        .filter(
+            DmLog.user_id == user_id,
+            DmLog.status == "success",
+            DmLog.sent_at >= start.replace(tzinfo=None),
+        )
+        .scalar()
+        or 0
+    )
 
 
 @router.get("/dm-queue", response_model=DmQueueResponse)
@@ -38,17 +80,29 @@ def get_dm_queue(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get DM targets for chrome extension - approved prospects with instagram, not yet DM'd."""
-    # 크레딧 부족이면 빈 큐 — 확장이 발송 시도 안 함
-    from app.core.plans import check_credits
-    if not check_credits(db, current_user.id, "dm", 1)["allowed"]:
-        return DmQueueResponse(targets=[], total=0)
+    """확장이 발송할 DM 대상 큐. 소유 프로젝트만, 워밍업 한도 잔여분만, 개인화+변형된 문구 포함."""
+    # ─── 소유권 확인 (IDOR 방지) ───
+    project = (
+        db.query(Project)
+        .filter(Project.id == project_id, Project.user_id == current_user.id)
+        .first()
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="프로젝트를 찾을 수 없습니다")
 
-    from sqlalchemy import select
+    settings = db.query(UserSettings).filter(UserSettings.user_id == current_user.id).first()
+    daily_limit = _dm_daily_limit(current_user, settings)
+    sent_today = _sent_today(db, current_user.id)
+    remaining = max(0, daily_limit - sent_today)
+
+    # 크레딧 부족 또는 오늘 한도 소진 → 빈 큐
+    from app.core.plans import check_credits
+    if remaining == 0 or not check_credits(db, current_user.id, "dm", 1)["allowed"]:
+        return DmQueueResponse(targets=[], total=0, daily_limit=daily_limit, sent_today=sent_today)
+
     dm_sent_ids = select(DmLog.prospect_id).where(
         DmLog.user_id == current_user.id, DmLog.status == "success"
     )
-
     prospects = (
         db.query(Prospect)
         .filter(
@@ -59,33 +113,40 @@ def get_dm_queue(
             ~Prospect.id.in_(dm_sent_ids),
         )
         .order_by(Prospect.collected_at)
-        .limit(limit)
+        .limit(min(limit, remaining))
         .all()
     )
 
-    targets = [
-        DmTarget(
+    template = (settings.dm_template if settings and settings.dm_template else DEFAULT_DM_TEMPLATE)
+
+    targets = []
+    for p in prospects:
+        handle = normalize_instagram(p.instagram)
+        if not handle:
+            continue
+        # 발송 차단: 블랙리스트/전역 수신거부 (이메일 기준 — DM도 동일 업체면 차단)
+        if p.email and is_email_suppressed(db, current_user.id, p.email):
+            continue
+        message = render_dm(
+            template,
+            company_name=p.name or "",
+            username=handle,
             prospect_id=p.id,
+        )
+        targets.append(DmTarget(
+            prospect_id=p.id,
+            username=handle,
+            instagram_pk=p.instagram_pk,
+            message=message,
             name=p.name,
-            instagram=p.instagram,
-            category=p.category,
-        )
-        for p in prospects
-    ]
+        ))
 
-    total_count = (
-        db.query(Prospect)
-        .filter(
-            Prospect.project_id == project_id,
-            Prospect.status.in_(["approved", "email_sent"]),
-            Prospect.instagram.isnot(None),
-            Prospect.instagram != "",
-            ~Prospect.id.in_(dm_sent_ids),
-        )
-        .count()
+    return DmQueueResponse(
+        targets=targets,
+        total=len(targets),
+        daily_limit=daily_limit,
+        sent_today=sent_today,
     )
-
-    return DmQueueResponse(targets=targets, total=total_count)
 
 
 @router.post("/dm-result", response_model=dict)
@@ -94,7 +155,7 @@ def report_dm_result(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Report DM send result from chrome extension."""
+    """확장이 보고한 DM 발송 결과 기록 + 크레딧 차감 + PK 캐싱."""
     prospect = (
         db.query(Prospect)
         .join(Project, Prospect.project_id == Project.id)
@@ -107,22 +168,25 @@ def report_dm_result(
     if req.status not in ("success", "failed"):
         raise HTTPException(status_code=400, detail="Status must be 'success' or 'failed'")
 
+    # 확장이 해석한 인스타 PK 캐싱 (다음부터 해석 생략 → 레이트리밋 절약)
+    if req.instagram_pk and not prospect.instagram_pk:
+        prospect.instagram_pk = req.instagram_pk[:50]
+
     log = DmLog(
         prospect_id=req.prospect_id,
         user_id=current_user.id,
         status=req.status,
         error_message=req.error_message,
+        message_body=req.message_body,
     )
     db.add(log)
 
     if req.status == "success":
         prospect.status = "dm_sent"
-        # 크레딧 차감 (DM 1건 = 3 크레딧). 잔액 부족이면 더 이상 발송 못하게 차감.
         from app.core.plans import CREDIT_COSTS, deduct_credits, check_credits
         if check_credits(db, current_user.id, "dm", 1)["allowed"]:
             deduct_credits(db, current_user.id, CREDIT_COSTS["dm"], f"DM 발송: @{prospect.instagram}")
         else:
-            # 크레딧 부족 — 로그 남겨두되 사용자에게 충전 안내가 가도록
             log.error_message = (log.error_message or "") + " (warning: credits exhausted)"
 
     db.commit()

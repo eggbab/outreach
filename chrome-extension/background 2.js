@@ -45,7 +45,9 @@ async function forwardToInstagramTab(msg) {
   try {
     const tabs = await chrome.tabs.query({ url: 'https://www.instagram.com/*' });
     if (tabs.length === 0) {
+      // 인스타그램 탭이 없으면 열기
       const tab = await chrome.tabs.create({ url: 'https://www.instagram.com/direct/inbox/' });
+      // 탭 로딩 완료 후 메시지 전송
       chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
         if (tabId === tab.id && info.status === 'complete') {
           chrome.tabs.onUpdated.removeListener(listener);
@@ -53,9 +55,7 @@ async function forwardToInstagramTab(msg) {
         }
       });
     } else {
-      // 완전히 로드된(complete) 탭 우선, 없으면 활성 탭, 그래도 없으면 첫 탭
-      const ready = tabs.find((t) => t.status === 'complete') || tabs.find((t) => t.active) || tabs[0];
-      chrome.tabs.sendMessage(ready.id, msg).catch(() => {});
+      chrome.tabs.sendMessage(tabs[0].id, msg).catch(() => {});
     }
   } catch (err) {
     console.error('Failed to forward message to Instagram tab:', err);
@@ -71,15 +71,17 @@ async function handleDmResult(result) {
     console.error('Failed to report DM result:', err);
   }
 
-  // 로컬 로그 업데이트 (새 계약: prospect_id / status / error_message)
+  // 로컬 로그 업데이트
   const data = await chrome.storage.local.get('dmLog');
   const logs = data.dmLog || [];
   logs.push({
-    prospect_id: result.prospect_id,
-    success: result.status === 'success',
+    target: result.target_id,
+    username: result.username,
+    success: result.success,
     timestamp: new Date().toISOString(),
-    error: result.error_message || null,
+    error: result.error || null,
   });
+  // 최근 100건만 유지
   if (logs.length > 100) logs.splice(0, logs.length - 100);
   await chrome.storage.local.set({ dmLog: logs });
 
@@ -94,7 +96,7 @@ async function handleDmResult(result) {
 async function updateBadge() {
   try {
     const queue = await fetchDmQueue();
-    const count = queue.total ?? queue.targets?.length ?? 0;
+    const count = queue.queue_size ?? queue.targets?.length ?? 0;
     const text = count > 0 ? String(count) : '';
     chrome.action.setBadgeText({ text });
     chrome.action.setBadgeBackgroundColor({ color: '#2563eb' });
@@ -133,9 +135,7 @@ async function apiWithAuth(method, path, body = null) {
 }
 
 async function fetchDmQueue() {
-  const data = await chrome.storage.local.get('currentProjectId');
-  if (!data.currentProjectId) return { targets: [], total: 0 };
-  return apiWithAuth('GET', `/api/chrome/dm-queue?project_id=${data.currentProjectId}`);
+  return apiWithAuth('GET', '/api/chrome/dm-queue');
 }
 
 // --- 확장 설치 시 ---
@@ -144,20 +144,10 @@ chrome.runtime.onInstalled.addListener(() => {
   updateBadge();
 });
 
-// --- 서버에 살아있음 신호 (heartbeat) ---
-async function pingServer() {
-  const data = await chrome.storage.local.get(['currentProjectId', 'authToken']);
-  if (!data.currentProjectId || !data.authToken) return;
-  try {
-    await apiWithAuth('POST', `/api/projects/${data.currentProjectId}/dm/ping`, {});
-  } catch { /* 미연결 시 조용히 무시 */ }
-}
-
-// --- 주기적 배지 업데이트 + heartbeat (1분마다) ---
-chrome.alarms.create('tick', { periodInMinutes: 1 });
+// --- 주기적 배지 업데이트 (5분마다) ---
+chrome.alarms.create('updateBadge', { periodInMinutes: 5 });
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'tick') {
+  if (alarm.name === 'updateBadge') {
     updateBadge();
-    pingServer();
   }
 });

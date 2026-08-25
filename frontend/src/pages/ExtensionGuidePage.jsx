@@ -109,7 +109,7 @@ export default function ExtensionGuidePage() {
           <li>잠재고객 수집 → 인스타 핸들 있는 사람 "승인"</li>
           <li>설정 페이지에서 DM 메시지 작성</li>
           <li><strong>인스타 탭이 열려 있는 상태</strong>에서 확장 팝업의 "발송 시작" 클릭</li>
-          <li>확장이 자동으로 한 명씩 90~180초 간격으로 발송 (백그라운드)</li>
+          <li>확장이 한 명씩 90~180초 간격으로 자동 발송 — <strong>발송 중에는 인스타그램 탭을 열어두세요</strong> (탭을 닫으면 발송이 멈춥니다)</li>
         </ol>
       </div>
 

@@ -56,9 +56,10 @@ def search_kakao(keyword: str, max_results: int = 15, match_level: str = "medium
                     if not name or not phone:
                         # 이메일/인스타 없이 전화도 없으면 잠재고객 가치 없음
                         continue
-                    # category_name: "음식점 > 카페 > 커피전문점" → 마지막 세그먼트
+                    # category_name: "음식점 > 카페 > 커피전문점" → 마지막(가장 구체) 세그먼트
                     category_full = (doc.get("category_name") or "").strip()
                     category = category_full.split(">")[-1].strip() if category_full else keyword
+                    # place_url은 카카오맵 링크(업체 홈페이지 아님) — 발송엔 무의미하나 업체 확인용
                     prospects.append({
                         "name": name,
                         "phone": phone,

@@ -190,9 +190,10 @@ async function refreshLog() {
       hour: '2-digit',
       minute: '2-digit',
     });
+    const label = log.username ? `@${log.username}` : `잠재고객 #${log.prospect_id ?? log.target ?? '-'}`;
     return `
       <div class="log-item">
-        <span class="log-name">${escapeHtml(log.username || log.target)}</span>
+        <span class="log-name">${escapeHtml(label)}</span>
         <span class="${statusClass}">${statusText}</span>
         <span class="log-time">${time}</span>
       </div>

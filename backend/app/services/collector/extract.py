@@ -26,6 +26,28 @@ INSTAGRAM_BLACKLIST = {
 }
 
 
+def normalize_instagram(raw: str | None) -> str | None:
+    """@handle / URL / 대소문자 혼재를 순수 소문자 핸들로 정규화. 유효하지 않으면 None.
+
+    수집·수동입력·DM 큐 전 경로에서 동일하게 사용해 dedup·발송 일관성을 보장한다.
+    """
+    if not raw:
+        return None
+    h = raw.strip()
+    if "instagram.com/" in h:
+        h = h.split("instagram.com/")[-1]
+    h = h.split("/")[0].split("?")[0].strip().lstrip("@").strip(".").lower()
+    if not h or len(h) > 30:
+        return None
+    if h in INSTAGRAM_BLACKLIST:
+        return None
+    if not re.fullmatch(r"[a-z0-9_.]{1,30}", h):
+        return None
+    if re.search(r"\.(kr|com|net|org|io|co|me|shop)$", h):
+        return None
+    return h
+
+
 def keyword_matches(page_title: str, page_text: str, keyword: str, level: str = "medium") -> bool:
     """
     수집 결과 페이지가 키워드와 얼마나 잘 맞는지 판정.

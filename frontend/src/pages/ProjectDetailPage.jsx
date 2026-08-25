@@ -815,9 +815,11 @@ function DmTab({ projectId, showToast }) {
             desc={hasTargets ? `${queue.length}명 대기 중` : '키워드 추가 → 수집 → 잠재고객 탭에서 인스타 핸들 있는 사람 "승인"'}
           />
           <StepRow
-            num={4} done={false}
+            num={4} done={sentLog.length > 0}
             title='크롬 확장 팝업에서 "발송 시작" 클릭'
-            desc="확장이 본인 브라우저로 한 명씩 90~180초 간격 발송. 사이트 닫아도 발송은 계속됩니다."
+            desc={sentLog.length > 0
+              ? `지금까지 ${sentLog.length}건 발송됨`
+              : '확장이 본인 브라우저로 한 명씩 90~180초 간격 발송. 발송 중에는 인스타그램 탭을 열어두세요.'}
           />
         </div>
         <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
@@ -872,14 +874,27 @@ function DmTab({ projectId, showToast }) {
           <p className="text-sm text-gray-400 py-8 text-center">아직 발송된 DM이 없습니다.</p>
         ) : (
           <div className="space-y-2 max-h-64 overflow-y-auto">
-            {sentLog.map((log, i) => (
-              <div key={i} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg text-sm">
-                <span className="text-gray-900">@{log.instagram} - {log.name}</span>
-                <span className="text-xs text-gray-400">
-                  {new Date(log.sent_at).toLocaleString('ko-KR')}
-                </span>
-              </div>
-            ))}
+            {sentLog.map((log, i) => {
+              const ok = log.status === 'success'
+              return (
+                <div key={i} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg text-sm">
+                  <span className="text-gray-900">@{log.instagram} - {log.name}</span>
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${ok ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      {ok ? '성공' : '실패'}
+                    </span>
+                    {!ok && log.error_message && (
+                      <span className="text-xs text-red-400" title={log.error_message}>
+                        {log.error_message.slice(0, 20)}
+                      </span>
+                    )}
+                    <span className="text-xs text-gray-400">
+                      {new Date(log.sent_at).toLocaleString('ko-KR')}
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>

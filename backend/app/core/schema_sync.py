@@ -19,6 +19,9 @@ _ADDED_COLUMNS = [
     ("global_prospects", "times_replied", "INTEGER DEFAULT 0"),
     ("user_settings", "ad_prefix_enabled", "BOOLEAN DEFAULT TRUE"),
     ("user_settings", "sender_info", "TEXT"),
+    ("prospects", "instagram_pk", "VARCHAR(50)"),
+    ("dm_logs", "message_body", "TEXT"),
+    ("dm_logs", "replied_at", "TIMESTAMP"),
 ]
 
 # Postgres 네이티브 enum에 추가된 값

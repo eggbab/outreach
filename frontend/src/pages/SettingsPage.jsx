@@ -419,7 +419,7 @@ export default function SettingsPage() {
             placeholder="DM 메시지 템플릿"
           />
           <p className="text-xs text-gray-400 mt-2">
-            변수: {'{name}'}, {'{company_name}'}, {'{username}'} · 시스템이 자동으로 인사말/마무리를 살짝씩 변형해 스팸 패턴을 깹니다
+            변수: {'{name}'}, {'{company_name}'}, {'{username}'} · 변형: <code className="bg-gray-100 px-1 rounded">{'{안녕하세요|반갑습니다}'}</code> 처럼 쓰면 수신자마다 다른 문구가 나갑니다. 변형을 안 넣어도 인사말·마무리가 자동으로 조금씩 바뀝니다.
           </p>
         </div>
 

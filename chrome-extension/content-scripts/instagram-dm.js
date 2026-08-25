@@ -1,57 +1,39 @@
 /**
  * Instagram DM 자동 발송 콘텐츠 스크립트
- * Instagram Private API를 통해 DM을 직접 전송
+ *
+ * 서버가 준 대기열(각 대상별 개인화·변형 완료된 message)을 받아,
+ * username → 내부 PK를 인스타 공개 API로 해석한 뒤 DM을 순차 발송한다.
+ * 본인 브라우저의 로그인 세션(credentials: include)을 사용 — 서버는 자격증명을 갖지 않는다.
  */
 
 (() => {
-  // 설정
-  const DELAY_MIN = 90;  // 최소 대기 시간 (초)
-  const DELAY_MAX = 180; // 최대 대기 시간 (초)
+  const DELAY_MIN = 90;   // 최소 대기(초)
+  const DELAY_MAX = 180;  // 최대 대기(초)
   const IG_APP_ID = '936619743392459';
   const DM_API_URL = 'https://www.instagram.com/api/v1/direct_v2/threads/broadcast/text/';
+  const PROFILE_API = 'https://www.instagram.com/api/v1/users/web_profile_info/?username=';
 
-  // 상태
   let isRunning = false;
   let targets = [];
-  let currentIndex = 0;
-  let todaySent = 0;
   let dailyLimit = 15;
-  let sentHistory = new Set(); // 중복 발송 방지
+  let todaySent = 0;
+  let sentHistory = new Set();
 
-  // --- 메시지 리스너 ---
-  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (msg.type === 'START_DM_SENDING') {
-      if (!isRunning) {
-        startSending();
-      }
-    }
-    if (msg.type === 'STOP_DM_SENDING') {
-      stopSending('사용자 중지');
-    }
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.type === 'START_DM_SENDING' && !isRunning) startSending();
+    if (msg.type === 'STOP_DM_SENDING') stopSending('사용자 중지', /*isError=*/false);
   });
 
-  // --- CSRF 토큰 추출 ---
   function getCsrfToken() {
-    // 쿠키에서 추출
     const match = document.cookie.match(/csrftoken=([^;]+)/);
     if (match) return match[1];
-
-    // meta 태그에서 추출
-    const meta = document.querySelector('meta[name="csrf-token"]');
-    if (meta) return meta.getAttribute('content');
-
-    // 페이지 소스에서 추출
-    const scripts = document.querySelectorAll('script');
-    for (const script of scripts) {
-      const text = script.textContent;
-      const csrfMatch = text.match(/"csrf_token":"([^"]+)"/);
-      if (csrfMatch) return csrfMatch[1];
+    for (const script of document.querySelectorAll('script')) {
+      const m = (script.textContent || '').match(/"csrf_token":"([^"]+)"/);
+      if (m) return m[1];
     }
-
     return null;
   }
 
-  // --- UUID 생성 ---
   function generateUUID() {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
       const r = (Math.random() * 16) | 0;
@@ -60,49 +42,46 @@
     });
   }
 
-  // --- 랜덤 딜레이 ---
   function randomDelay() {
-    const seconds = DELAY_MIN + Math.random() * (DELAY_MAX - DELAY_MIN);
-    return seconds * 1000;
+    return (DELAY_MIN + Math.random() * (DELAY_MAX - DELAY_MIN)) * 1000;
   }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  // --- 딜레이 Promise ---
-  function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
-  // --- 메시지 템플릿 치환 ---
-  function renderMessage(template, target) {
-    let message = template;
-    message = message.replace(/\{company\}/g, target.company_name || target.username || '');
-    message = message.replace(/\{name\}/g, target.name || target.company_name || '');
-    message = message.replace(/\{username\}/g, target.username || '');
-    return message;
-  }
-
-  // --- DM 전송 ---
-  async function sendDm(target, messageText) {
-    const csrfToken = getCsrfToken();
-    if (!csrfToken) {
-      throw new Error('CSRF 토큰을 찾을 수 없습니다. Instagram에 로그인되어 있는지 확인하세요.');
-    }
-
-    const userPk = target.instagram_pk || target.user_pk || target.pk;
-    if (!userPk) {
-      throw new Error(`사용자 PK가 없습니다: ${target.username}`);
-    }
-
-    const body = new URLSearchParams({
-      recipient_users: JSON.stringify([userPk]),
-      message: { text: messageText },
-      client_context: generateUUID(),
-      action: 'send_item',
+  // username → 내부 PK 해석 (인스타 공개 프로필 API)
+  async function resolvePk(username) {
+    const resp = await fetch(PROFILE_API + encodeURIComponent(username), {
+      headers: { 'X-IG-App-ID': IG_APP_ID, 'X-Requested-With': 'XMLHttpRequest' },
+      credentials: 'include',
     });
+    if (resp.status === 404) throw new Error('ACCOUNT_NOT_FOUND');
+    if (resp.status === 429) throw new Error('RATE_LIMITED');
+    if (resp.status === 401 || resp.status === 403) throw new Error('LOGIN_REQUIRED');
+    if (!resp.ok) throw new Error(`profile_lookup_${resp.status}`);
+    const data = await resp.json().catch(() => null);
+    const pk = data?.data?.user?.id;
+    if (!pk) throw new Error('ACCOUNT_NOT_FOUND');
+    return String(pk);
+  }
 
-    // message 필드를 올바르게 설정 (URLSearchParams는 자동으로 toString하므로 직접 설정)
+  // 인스타 응답에서 계정 차단/체크포인트 등 '전체 중단' 신호 판별
+  function detectHardStop(status, result) {
+    if (status === 429) return 'rate_limited';
+    if (status === 403 || status === 401) return 'login_or_block';
+    const r = result || {};
+    if (r.spam === true) return 'spam_flag';
+    if (r.message === 'feedback_required' || r.feedback_required) return 'feedback_required';
+    if (r.require_login || r.checkpoint_url || r.challenge) return 'checkpoint';
+    if (typeof r.message === 'string' && /checkpoint|challenge|block/i.test(r.message)) return 'checkpoint';
+    return null;
+  }
+
+  async function sendDm(userPk, messageText) {
+    const csrfToken = getCsrfToken();
+    if (!csrfToken) throw new Error('LOGIN_REQUIRED');
+
     const formData = new URLSearchParams();
-    formData.append('recipient_users', JSON.stringify([userPk]));
-    formData.append('message', JSON.stringify({ text: messageText }));
+    formData.append('recipient_users', JSON.stringify([[Number(userPk)]]));
+    formData.append('message', messageText);
     formData.append('client_context', generateUUID());
     formData.append('action', 'send_item');
 
@@ -118,203 +97,131 @@
       credentials: 'include',
     });
 
-    const result = await response.json();
+    let result = null;
+    try { result = await response.json(); } catch { /* HTML 에러 페이지 등 */ }
 
-    // 스팸 감지
-    if (result.spam || JSON.stringify(result).toLowerCase().includes('spam') ||
-        JSON.stringify(result).toLowerCase().includes('feedback')) {
-      throw new Error('SPAM_DETECTED');
+    const hardStop = detectHardStop(response.status, result);
+    if (hardStop) { const e = new Error('HARD_STOP'); e.reason = hardStop; throw e; }
+
+    if (!response.ok || !result || result.status !== 'ok') {
+      throw new Error((result && result.message) || `send_failed_${response.status}`);
     }
-
-    if (result.status !== 'ok') {
-      throw new Error(result.message || `전송 실패: ${JSON.stringify(result)}`);
-    }
-
     return result;
   }
 
-  // --- 발송 시작 ---
   async function startSending() {
     isRunning = true;
-
-    // 발송 이력 복원
-    const stored = await chrome.storage.local.get(['dmSentHistory', 'dmTodaySent', 'dmTodayDate']);
     const today = new Date().toISOString().slice(0, 10);
+    const stored = await chrome.storage.local.get(['dmSentHistory', 'dmTodaySent', 'dmTodayDate', 'dmCooldownUntil']);
 
-    if (stored.dmTodayDate === today) {
-      todaySent = stored.dmTodaySent || 0;
-    } else {
-      todaySent = 0;
-      await chrome.storage.local.set({ dmTodayDate: today, dmTodaySent: 0 });
+    // 차단 쿨다운 중이면 발송 금지
+    if (stored.dmCooldownUntil && Date.now() < stored.dmCooldownUntil) {
+      const mins = Math.ceil((stored.dmCooldownUntil - Date.now()) / 60000);
+      stopSending(`인스타 제한 감지로 대기 중입니다. 약 ${mins}분 후 다시 시도하세요.`, true);
+      return;
     }
 
-    sentHistory = new Set(stored.dmSentHistory || []);
+    todaySent = stored.dmTodayDate === today ? (stored.dmTodaySent || 0) : 0;
+    if (stored.dmTodayDate !== today) await chrome.storage.local.set({ dmTodayDate: today, dmTodaySent: 0 });
+    // 오래된 이력은 자름 (최근 2000건 유지 — 무한 증가 방지)
+    sentHistory = new Set((stored.dmSentHistory || []).slice(-2000));
 
-    // 서버에서 대기열 가져오기
     try {
-      const response = await new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({ type: 'GET_DM_QUEUE' }, (resp) => {
-          if (resp?.error) reject(new Error(resp.error));
-          else resolve(resp);
+      const resp = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({ type: 'GET_DM_QUEUE' }, (r) => {
+          if (r?.error) reject(new Error(r.error)); else resolve(r);
         });
       });
-
-      targets = response.targets || [];
-      dailyLimit = response.daily_limit || 15;
-
-      if (targets.length === 0) {
-        notifyComplete('대기열이 비어있습니다.');
-        return;
-      }
+      targets = resp.targets || [];
+      dailyLimit = resp.daily_limit || 15;
+      todaySent = resp.sent_today != null ? resp.sent_today : todaySent;
     } catch (err) {
-      notifyError(`대기열 로드 실패: ${err.message}`);
+      stopSending(`대기열 로드 실패: ${err.message}`, true);
       return;
     }
 
-    // 이미 발송한 대상 필터링
-    targets = targets.filter((t) => {
-      const key = t.instagram_pk || t.user_pk || t.pk || t.username;
-      return !sentHistory.has(String(key));
-    });
+    targets = targets.filter((t) => !sentHistory.has(String(t.prospect_id)));
+    if (targets.length === 0) { notifyComplete('발송할 새 대상이 없습니다.'); isRunning = false; return; }
 
-    if (targets.length === 0) {
-      notifyComplete('모든 대상에게 이미 발송 완료.');
-      return;
-    }
-
-    console.log(`[Outreach] DM 발송 시작: ${targets.length}건, 오늘 발송: ${todaySent}/${dailyLimit}`);
-
-    // 순차 발송
-    currentIndex = 0;
+    let idx = 0;
     for (const target of targets) {
       if (!isRunning) break;
-      if (todaySent >= dailyLimit) {
-        notifyComplete('일일 발송 한도에 도달했습니다.');
-        break;
-      }
-
-      currentIndex++;
-      const messageTemplate = target.message_template || target.message || getDefaultTemplate();
-      const messageText = renderMessage(messageTemplate, target);
-
-      notifyProgress(currentIndex, targets.length);
+      if (todaySent >= dailyLimit) { notifyComplete(`오늘 안전 한도(${dailyLimit}건) 도달`); break; }
+      idx++;
+      notifyProgress(idx, targets.length, `@${target.username} 처리 중`);
 
       try {
-        await sendDm(target, messageText);
+        // 1) PK 해석 (서버 캐시가 있으면 그대로, 없으면 조회)
+        let pk = target.instagram_pk;
+        if (!pk) {
+          pk = await resolvePk(target.username);
+          await sleep(2000 + Math.random() * 3000); // 조회-발송 사이 짧은 간격
+        }
+
+        // 2) 발송
+        await sendDm(pk, target.message);
         todaySent++;
+        sentHistory.add(String(target.prospect_id));
+        await saveState(today);
 
-        // 성공 기록
-        const key = String(target.instagram_pk || target.user_pk || target.pk || target.username);
-        sentHistory.add(key);
-        await saveSentHistory();
-
-        // 결과 보고
         reportResult({
-          target_id: target.id,
-          username: target.username,
-          success: true,
+          prospect_id: target.prospect_id,
+          status: 'success',
+          message_body: target.message,
+          instagram_pk: pk,
         });
+        notifyProgress(idx, targets.length, `@${target.username} 발송 완료`);
 
-        console.log(`[Outreach] DM 발송 성공: @${target.username} (${currentIndex}/${targets.length})`);
-
-        // 마지막이 아니면 딜레이
-        if (currentIndex < targets.length && isRunning) {
-          const delay = randomDelay();
-          console.log(`[Outreach] 다음 발송까지 ${Math.round(delay / 1000)}초 대기`);
-          notifyProgress(currentIndex, targets.length, `다음 발송까지 ${Math.round(delay / 1000)}초 대기`);
-          await sleep(delay);
+        if (idx < targets.length && isRunning) {
+          const d = randomDelay();
+          notifyProgress(idx, targets.length, `다음까지 ${Math.round(d / 1000)}초 대기`);
+          await sleep(d);
         }
       } catch (err) {
-        if (err.message === 'SPAM_DETECTED') {
-          console.error('[Outreach] 스팸 감지됨! 발송 중단.');
+        if (err.message === 'HARD_STOP' || err.message === 'RATE_LIMITED' || err.message === 'LOGIN_REQUIRED') {
+          // 계정 보호를 위해 전체 중단 + 쿨다운 (기본 6시간)
+          const cooldown = Date.now() + 6 * 60 * 60 * 1000;
+          await chrome.storage.local.set({ dmCooldownUntil: cooldown });
           reportResult({
-            target_id: target.id,
-            username: target.username,
-            success: false,
-            error: 'spam_detected',
+            prospect_id: target.prospect_id, status: 'failed',
+            error_message: err.reason || err.message, stop_reason: err.reason || err.message,
           });
-          stopSending('스팸 감지로 자동 중단');
+          stopSending('인스타 제한 신호 감지 — 계정 보호를 위해 자동 중단(6시간 대기)', true);
           return;
         }
-
-        console.error(`[Outreach] DM 발송 실패: @${target.username}`, err.message);
+        // 개별 실패 (계정 없음/일시 오류) — 기록하고 계속
         reportResult({
-          target_id: target.id,
-          username: target.username,
-          success: false,
-          error: err.message,
+          prospect_id: target.prospect_id, status: 'failed', error_message: err.message,
         });
+        notifyProgress(idx, targets.length, `@${target.username} 실패: ${err.message}`);
       }
     }
 
-    if (isRunning) {
-      notifyComplete('발송 완료');
-    }
+    if (isRunning) notifyComplete('발송 완료');
     isRunning = false;
     await chrome.storage.local.set({ dmSending: false });
   }
 
-  // --- 발송 중지 ---
-  function stopSending(reason) {
+  function stopSending(reason, isError) {
     isRunning = false;
     chrome.storage.local.set({ dmSending: false });
-    console.log(`[Outreach] 발송 중지: ${reason}`);
-    notifyError(reason);
+    if (isError) notifyError(reason); else notifyComplete(reason);
   }
 
-  // --- 발송 이력 저장 ---
-  async function saveSentHistory() {
-    const today = new Date().toISOString().slice(0, 10);
+  async function saveState(today) {
     await chrome.storage.local.set({
-      dmSentHistory: Array.from(sentHistory),
+      dmSentHistory: Array.from(sentHistory).slice(-2000),
       dmTodaySent: todaySent,
       dmTodayDate: today,
     });
   }
 
-  // --- 결과 보고 ---
-  function reportResult(result) {
-    chrome.runtime.sendMessage({
-      type: 'DM_RESULT',
-      data: result,
-    });
-  }
-
-  // --- 상태 알림 ---
+  function reportResult(data) { chrome.runtime.sendMessage({ type: 'DM_RESULT', data }); }
   function notifyProgress(current, total, detail) {
-    chrome.runtime.sendMessage({
-      type: 'DM_PROGRESS',
-      current,
-      total,
-      todaySent,
-      detail: detail || `${current}/${total} 발송 중`,
-    });
+    chrome.runtime.sendMessage({ type: 'DM_PROGRESS', current, total, todaySent, detail });
   }
+  function notifyComplete(message) { chrome.runtime.sendMessage({ type: 'DM_COMPLETE', message, todaySent }); }
+  function notifyError(message) { chrome.runtime.sendMessage({ type: 'DM_ERROR', message }); }
 
-  function notifyComplete(message) {
-    chrome.runtime.sendMessage({
-      type: 'DM_COMPLETE',
-      message,
-      todaySent,
-    });
-  }
-
-  function notifyError(message) {
-    chrome.runtime.sendMessage({
-      type: 'DM_ERROR',
-      message,
-    });
-  }
-
-  // --- 기본 메시지 템플릿 ---
-  function getDefaultTemplate() {
-    return `안녕하세요, {company} 담당자님!
-
-마트/슈퍼 업계 최대 커뮤니티 '마트마트'에서 연락드립니다.
-22,000명 이상의 마트/슈퍼 사장님들이 활동하는 네이버 카페에 광고 파트너십을 제안드리고 싶습니다.
-
-자세한 내용은 회신 부탁드립니다. 감사합니다!`;
-  }
-
-  console.log('[Outreach] Instagram DM 콘텐츠 스크립트 로드 완료');
+  console.log('[Outreach] Instagram DM 콘텐츠 스크립트 로드됨');
 })();

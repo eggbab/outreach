@@ -231,9 +231,8 @@ def search_naver_map(keyword: str, max_results: int = 15, match_level: str = "me
                 insta = None
                 if website and "instagram.com/" in website:
                     # 인스타 링크는 핸들만 직접 파싱 (페이지 방문은 차단 위험 + 이메일 없음)
-                    handle = website.split("instagram.com/")[-1].split("/")[0].split("?")[0]
-                    if handle and handle not in ("p", "reel", "explore"):
-                        insta = handle
+                    from app.services.collector.extract import normalize_instagram
+                    insta = normalize_instagram(website)
                 elif website and website.startswith("http"):
                     try:
                         email, extracted_phone, _, insta = deep_extract_email(page, website)

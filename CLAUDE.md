@@ -7,9 +7,8 @@
 
 ## 기존 코드 참고 (수정 금지)
 `/Users/woojin/Documents/workspace/MartMart_AD/` — 원본 개인용 도구
-- `마트마트_자동화.py` → 네이버/구글/인스타 수집 로직 참고
-- `통합발송.py` → 이메일 SMTP + DM 템플릿 참고
-- `인스타_DM_자동화.js` → 크롬 확장 content script 참고
+- `마트마트_자동화.py` → 네이버/구글/인스타 수집 로직 참고 (현존)
+- (참고: 과거 CLAUDE.md가 언급하던 `통합발송.py`·`인스타_DM_자동화.js`는 원본에 없음. DM 구현은 `chrome-extension/content-scripts/instagram-dm.js`가 정본)
 
 ## 기술 스택
 - **백엔드**: Python 3.13 (venv), FastAPI, SQLAlchemy, PostgreSQL (Supabase), JWT(python-jose), bcrypt
@@ -94,6 +93,7 @@ cd frontend && npm run dev
   - 배포 수정: 프로덕션 dev 시크릿 기동 차단, schema_sync(create_all+컬럼 보정, alembic 미사용), .dockerignore 중첩 경로, Docker에 chrome-extension 포함, CORS 확장 origin 허용, 확장 alarms 권한, discover import 크레딧 차감, subscription self-upgrade 라우트 제거, bootstrap-first-admin은 ADMIN_EMAIL 제한
   - 테스트 135개 통과 (신규 30개 포함)
 - **v5.1 (2026-08-24)**: 카카오 로컬 공식 API 수집 채널 (KAKAO_REST_API_KEY, 파이프라인 최우선·차단 리스크 0), 이메일 MX 검증(email_valid 채움 + 발송 시 invalid 스킵), 수집 파이프라인 중복 호출 버그 수정, GlobalProspect.region 사용 시작, 랜딩 허위 후기/수치 제거(표시광고법) + "왜 Outreach인가" 섹션. 네이버 지도 수집은 응답 가로채기 방식(캡차 우회)
+- **v5.2 인스타 DM 재건 (2026-08-25)**: DM 발송이 구조적으로 0건이던 3대 결함 수정 — (1) username→인스타 PK 해석(content script가 web_profile_info로 조회, Prospect.instagram_pk 캐싱) (2) 큐 payload 계약 정합({prospect_id,username,instagram_pk,message,daily_limit}) (3) dm-result 계약 정합. 안티밴: 스핀택스 변형 실구현(`services/dm_compose.py`, 대상마다 다른 문구), DM 워밍업 서버 강제(chrome.py에서 get_enforced_daily_limit), 발송 시 블랙리스트/전역수신거부 체크, feedback_required/429/checkpoint 구조적 감지 + 6시간 쿨다운. 보안: dm-queue/dm queue IDOR 수정. 핸들 정규화 공용화(`extract.normalize_instagram` — 수집·수동입력·DM큐 일관). DmLog에 message_body·replied_at. DM 워밍업 첫날 0→3(서비스가입일 기준 한계 보정). 크롬확장 heartbeat 알람 추가. 테스트 155개 통과(DM 계약 테스트 신규)
 - 아직 안 한 것: 실배포 실행 (Render/도메인), 계좌이체 외 PG 연동, SMTP 바운스 자동 감지, 공공데이터(인허가) 대량 시딩
 
 ## 배포

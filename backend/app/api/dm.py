@@ -13,18 +13,29 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.models.models import DmLog, Prospect, User
+from app.models.models import DmLog, Project, Prospect, User
 
 router = APIRouter(
     prefix="/api/projects/{project_id}/dm",
     tags=["dm"],
 )
+
+
+def _verify_project(project_id: int, user_id: int, db: Session) -> None:
+    """프로젝트 소유 확인 — IDOR(교차 테넌트 접근) 방지."""
+    owned = (
+        db.query(Project.id)
+        .filter(Project.id == project_id, Project.user_id == user_id)
+        .first()
+    )
+    if not owned:
+        raise HTTPException(status_code=404, detail="프로젝트를 찾을 수 없습니다")
 
 # 확장의 최근 ping 기록 (in-memory)
 _extension_pings: dict[int, datetime] = {}
@@ -89,7 +100,8 @@ def get_dm_queue(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """승인됐고 인스타 핸들이 있고 아직 DM 안 보낸 잠재고객."""
+    """승인됐고 인스타 핸들이 있고 아직 DM 안 보낸 잠재고객 (대시보드 표시용)."""
+    _verify_project(project_id, current_user.id, db)
     from sqlalchemy import select
     dm_sent_ids = select(DmLog.prospect_id).where(
         DmLog.user_id == current_user.id, DmLog.status == "success"
@@ -125,6 +137,7 @@ def get_dm_log(
     current_user: User = Depends(get_current_user),
 ):
     """이 프로젝트의 DM 발송 기록."""
+    _verify_project(project_id, current_user.id, db)
     logs = (
         db.query(DmLog, Prospect)
         .join(Prospect, DmLog.prospect_id == Prospect.id)

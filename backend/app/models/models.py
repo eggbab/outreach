@@ -109,6 +109,8 @@ class Prospect(Base):
     email_valid = Column(Boolean, nullable=True)
     phone = Column(String(50), nullable=True)
     instagram = Column(String(100), nullable=True)
+    # 인스타 내부 숫자 ID (username→pk 해석 결과 캐싱 — DM 발송에 필수)
+    instagram_pk = Column(String(50), nullable=True)
     website = Column(String(500), nullable=True)
     source = Column(String(50), nullable=True)
     category = Column(String(100), nullable=True)
@@ -171,6 +173,9 @@ class DmLog(Base):
         nullable=False,
     )
     error_message = Column(Text, nullable=True)
+    # 발송한 실제 메시지 본문 (변형 후) + 답장 추적
+    message_body = Column(Text, nullable=True)
+    replied_at = Column(DateTime, nullable=True)
 
     prospect = relationship("Prospect", back_populates="dm_logs")
     user = relationship("User", back_populates="dm_logs")

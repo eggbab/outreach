@@ -93,9 +93,11 @@ SAFETY_DEFAULTS = {
         "hourly_limit": 5,          # 시간당 한도
         "min_delay_seconds": 180,   # 최소 3분 간격
         "max_delay_seconds": 480,   # 최대 8분 간격
-        "warmup_day1_limit": 0,     # 첫 2주는 DM 안 보내기 권장
-        "warmup_daily_increase": 1, # 매일 1건씩 증가
-        "warmup_days": 42,          # 워밍업 6주 (인스타는 더 보수적)
+        # 워밍업 기준은 '서비스 가입일'이라 인스타 계정 나이와 다를 수 있음 → 하드 0 대신
+        # 첫날 3건부터 소량 허용(제품이 최소 작동). 신규 인스타 계정 주의는 UI에서 경고.
+        "warmup_day1_limit": 3,
+        "warmup_daily_increase": 1, # 매일 1건씩 증가 (3주면 상한 도달)
+        "warmup_days": 21,          # 워밍업 3주
     },
 }
 

@@ -213,6 +213,7 @@ def import_prospects(
 
     imported = 0
     skipped = 0
+    from app.services.collector.extract import normalize_instagram
     for item in req.prospects:
         email_valid = is_valid_email(item.email) if item.email else None
         prospect = Prospect(
@@ -221,7 +222,7 @@ def import_prospects(
             email=item.email,
             email_valid=email_valid,
             phone=item.phone,
-            instagram=item.instagram,
+            instagram=normalize_instagram(item.instagram),
             website=item.website,
             source=item.source or "import",
             category=item.category,
