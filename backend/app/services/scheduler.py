@@ -242,6 +242,32 @@ def process_replies():
         db.close()
 
 
+def process_bounces():
+    """Gmail IMAP으로 반송(바운스) 메일을 감지해 재발송 차단 + 하드바운스 크레딧 환불."""
+    db = SessionLocal()
+    try:
+        from app.services.bounce_detector import detect_bounces_all_users
+        detect_bounces_all_users(db)
+    except Exception as e:
+        logger.error(f"Error in process_bounces job: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+def process_meeting_reminders():
+    """24시간 이내 미팅에 리마인더 발송."""
+    db = SessionLocal()
+    try:
+        from app.services.meeting_notify import send_due_reminders
+        send_due_reminders(db)
+    except Exception as e:
+        logger.error(f"Error in process_meeting_reminders job: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 def reap_stale_jobs_job():
     """장시간 running으로 멈춘 작업 주기 정리 (hang 방지)."""
     db = SessionLocal()
@@ -293,6 +319,8 @@ def start_scheduler():
     scheduler.add_job(process_scheduled_emails, "interval", minutes=1, id="process_scheduled_emails", replace_existing=True)
     scheduler.add_job(process_replies, "interval", minutes=15, id="process_replies", replace_existing=True)
     scheduler.add_job(reap_stale_jobs_job, "interval", minutes=30, id="reap_stale_jobs", replace_existing=True)
+    scheduler.add_job(process_meeting_reminders, "interval", hours=1, id="meeting_reminders", replace_existing=True)
+    scheduler.add_job(process_bounces, "interval", minutes=30, id="process_bounces", replace_existing=True)
     scheduler.start()
     logger.info("Background scheduler started")
 

@@ -232,4 +232,13 @@ def book_meeting(
     db.add(meeting)
     db.commit()
     db.refresh(meeting)
+
+    # 예약 확인 메일 (실패해도 예약은 유효)
+    try:
+        from app.services.meeting_notify import send_booking_confirmation
+        send_booking_confirmation(db, meeting)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning("미팅 확인 메일 발송 실패", exc_info=True)
+
     return meeting

@@ -104,7 +104,8 @@ cd frontend && npm run dev
   - **죽은 기능 연결**: 제안서 send가 추적링크 담긴 실제 이메일 발송, 답장률(replied)을 대시보드·funnel에 추가(실제 전환신호)
   - **인덱스**: prospects(project_id,status)·email_logs(user_id,status)·dm_logs 등 hot 컬럼 인덱스(schema_sync)
   - 테스트 167개
-- **알려진 미해결(감사 기록)**: A/B 통계 대시보드 완전구현(발송 흐름+UI 재설계 필요), TeamProject 접근제어 미연결(에이전시 공유 불가)·크레딧 풀링 없음, 미팅 확인/리마인더 메일, 바운스 감지, best-send-time 개인화, 알림/할일 시스템
+- **v5.5 CRM 완성 (2026-08-25)**: 미팅 예약 확인 메일(예약자+호스트) + T-24h 리마인더(스케줄러 1h), 이메일 바운스 자동감지(`services/bounce_detector.py` — IMAP으로 mailer-daemon 반송 파싱 → email_valid=False로 재발송 차단, 하드바운스는 크레딧 환불(tx_type=refund)+전역 수신거부 등록, 스케줄러 30분). 테스트 175개.
+- **알려진 미해결(감사 기록)**: A/B 통계 대시보드 완전구현(발송 흐름+UI 재설계 필요), TeamProject 접근제어 미연결(에이전시 공유 불가)·크레딧 풀링 없음, best-send-time 개인화, 알림/할일(due-date task) 시스템
 - 아직 안 한 것: 실배포 실행, 계좌이체 외 PG, DM 답장추적(인스타), DmSendJob 서버측 기록
 
 ## 배포

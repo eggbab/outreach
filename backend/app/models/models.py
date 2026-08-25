@@ -570,6 +570,7 @@ class Meeting(Base):
     )
     booker_name = Column(String(100), nullable=True)
     booker_email = Column(String(255), nullable=True)
+    reminder_sent_at = Column(DateTime, nullable=True)  # T-24h 리마인더 발송 시각
     created_at = Column(DateTime, default=utcnow, nullable=False)
 
 

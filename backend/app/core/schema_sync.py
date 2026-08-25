@@ -22,6 +22,7 @@ _ADDED_COLUMNS = [
     ("prospects", "instagram_pk", "VARCHAR(50)"),
     ("dm_logs", "message_body", "TEXT"),
     ("dm_logs", "replied_at", "TIMESTAMP"),
+    ("meetings", "reminder_sent_at", "TIMESTAMP"),
 ]
 
 # Postgres 네이티브 enum에 추가된 값
