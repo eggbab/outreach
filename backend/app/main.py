@@ -63,6 +63,7 @@ from app.api.benchmarks import router as benchmarks_router
 from app.api.blacklist import router as blacklist_router
 from app.api.admin import router as admin_router
 from app.api.extension import router as extension_router
+from app.api.tasks import router as tasks_router
 
 from app.services.scheduler import start_scheduler, stop_scheduler
 
@@ -197,6 +198,7 @@ app.include_router(benchmarks_router)
 app.include_router(blacklist_router)
 app.include_router(admin_router)
 app.include_router(extension_router)
+app.include_router(tasks_router)
 
 
 _CSP_VALUE = (

@@ -38,6 +38,7 @@ class SendStatusResponse(BaseModel):
 class StartEmailRequest(BaseModel):
     scheduled_at: Optional[datetime] = None
     template_id: Optional[int] = None  # A/B: 이 템플릿의 변형들을 weight로 발송
+    smart_send: bool = False           # 업종 최적 시각에 자동 예약
 
 
 class TestEmailRequest(BaseModel):
@@ -288,22 +289,29 @@ def start_email_sending(
             detail="No approved prospects with email addresses found",
         )
 
-    # If scheduled_at is provided, create a scheduled job
-    if req.scheduled_at:
+    # 스마트 발송: 업종 최적 시각 자동 예약 (명시적 scheduled_at 없을 때만)
+    scheduled_at = req.scheduled_at
+    smart_reason = None
+    if not scheduled_at and req.smart_send:
+        from app.services.smart_send import compute_smart_send_at
+        scheduled_at, smart_reason = compute_smart_send_at(db, project_id)
+
+    # If scheduled_at is provided (or smart-computed), create a scheduled job
+    if scheduled_at:
         job = EmailSendJob(
             project_id=project_id,
             user_id=current_user.id,
             status="scheduled",
             total_targets=target_count,
-            scheduled_at=req.scheduled_at,
+            scheduled_at=scheduled_at,
             template_id=req.template_id,
         )
         db.add(job)
         db.commit()
-        return SendEmailResponse(
-            message=f"Email sending scheduled for {target_count} prospects at {req.scheduled_at}",
-            target_count=target_count,
-        )
+        msg = f"{target_count}명에게 {scheduled_at:%m월 %d일 %H시} 발송 예약됨"
+        if smart_reason:
+            msg += f" ({smart_reason})"
+        return SendEmailResponse(message=msg, target_count=target_count)
 
     # Create job record
     job = EmailSendJob(

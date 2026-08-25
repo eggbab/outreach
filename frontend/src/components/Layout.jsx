@@ -4,7 +4,7 @@ import { useAuth } from '../lib/auth'
 import {
   LayoutDashboard, Settings, LogOut, CreditCard,
   BarChart3, Mail, FileText, Kanban, Phone,
-  FileCheck, Calendar, Users, Key, Menu, X, Search, ShieldX, Chrome,
+  FileCheck, Calendar, Users, Key, Menu, X, Search, ShieldX, Chrome, CheckSquare,
 } from 'lucide-react'
 import Logo from './Logo'
 import UsageBadge from './UsageBadge'
@@ -54,6 +54,10 @@ export default function Layout({ children }) {
         <NavLink to="/pipeline" data-onboarding="nav-pipeline" className={navLinkClass} onClick={closeMobile}>
           <Kanban className="w-5 h-5" />
           파이프라인
+        </NavLink>
+        <NavLink to="/tasks" className={navLinkClass} onClick={closeMobile}>
+          <CheckSquare className="w-5 h-5" />
+          할 일
         </NavLink>
         <NavLink to="/calls" className={navLinkClass} onClick={closeMobile}>
           <Phone className="w-5 h-5" />

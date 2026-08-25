@@ -763,3 +763,22 @@ class GlobalUnsubscribe(Base):
     source_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     tracking_id = Column(String(64), nullable=True)
     created_at = Column(DateTime, default=utcnow)
+
+
+class TaskItem(Base):
+    """영업 할 일 — 마감일이 있는 후속 작업. 잠재고객/딜에 연결 가능.
+
+    마감 임박 시 스케줄러가 이메일 리마인더 발송. calls의 callback_at도 여기로 통합 표시.
+    """
+    __tablename__ = "task_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    prospect_id = Column(Integer, ForeignKey("prospects.id", ondelete="SET NULL"), nullable=True)
+    title = Column(String(300), nullable=False)
+    memo = Column(Text, nullable=True)
+    due_at = Column(DateTime, nullable=True)
+    done = Column(Boolean, default=False, nullable=False)
+    reminder_sent_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    completed_at = Column(DateTime, nullable=True)

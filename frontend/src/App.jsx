@@ -18,6 +18,7 @@ const SequencesPage = lazy(() => import('./pages/SequencesPage'))
 const TemplatesPage = lazy(() => import('./pages/TemplatesPage'))
 const PipelinePage = lazy(() => import('./pages/PipelinePage'))
 const CallsPage = lazy(() => import('./pages/CallsPage'))
+const TasksPage = lazy(() => import('./pages/TasksPage'))
 const ProposalsPage = lazy(() => import('./pages/ProposalsPage'))
 const MeetingsPage = lazy(() => import('./pages/MeetingsPage'))
 const BookingPage = lazy(() => import('./pages/BookingPage'))
@@ -81,6 +82,7 @@ function AppRoutes() {
         <Route path="/templates" element={<ProtectedRoute><TemplatesPage /></ProtectedRoute>} />
         <Route path="/pipeline" element={<ProtectedRoute><PipelinePage /></ProtectedRoute>} />
         <Route path="/calls" element={<ProtectedRoute><CallsPage /></ProtectedRoute>} />
+        <Route path="/tasks" element={<ProtectedRoute><TasksPage /></ProtectedRoute>} />
         <Route path="/proposals" element={<ProtectedRoute><ProposalsPage /></ProtectedRoute>} />
         <Route path="/meetings" element={<ProtectedRoute><MeetingsPage /></ProtectedRoute>} />
         <Route path="/teams" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />

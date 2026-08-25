@@ -268,6 +268,60 @@ def process_meeting_reminders():
         db.close()
 
 
+def process_task_reminders():
+    """마감 임박(24시간 이내) 미완료 할 일에 이메일 리마인더 발송."""
+    db = SessionLocal()
+    try:
+        from datetime import timedelta
+        from app.core.security import decrypt_value
+        from app.models.models import TaskItem, User, UserSettings
+        from app.services.sender.email import send_email, send_system_email
+
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        window = now + timedelta(hours=24)
+        due = (
+            db.query(TaskItem)
+            .filter(
+                TaskItem.done == False,  # noqa: E712
+                TaskItem.reminder_sent_at.is_(None),
+                TaskItem.due_at.isnot(None),
+                TaskItem.due_at > now,
+                TaskItem.due_at <= window,
+            )
+            .limit(100)
+            .all()
+        )
+        for t in due:
+            user = db.query(User).filter(User.id == t.user_id).first()
+            if not user or not user.email:
+                continue
+            when = t.due_at.strftime("%m월 %d일 %H:%M") if t.due_at else ""
+            html = (
+                f"<p>마감이 다가오는 할 일이 있습니다.</p>"
+                f"<ul><li><b>{t.title}</b></li><li>마감: {when}</li></ul>"
+                f"{'<p>' + t.memo + '</p>' if t.memo else ''}"
+            )
+            settings = db.query(UserSettings).filter(UserSettings.user_id == t.user_id).first()
+            sent = False
+            if settings and settings.gmail_email and settings.gmail_app_password_encrypted:
+                try:
+                    pw = decrypt_value(settings.gmail_app_password_encrypted)
+                    sent = send_email(gmail_email=settings.gmail_email, gmail_app_password=pw,
+                                      to_email=user.email, subject=f"[할 일 알림] {t.title}", html_body=html)
+                except Exception:
+                    sent = False
+            if not sent:
+                send_system_email(user.email, f"[할 일 알림] {t.title}", html)
+            t.reminder_sent_at = now
+        if due:
+            db.commit()
+    except Exception as e:
+        logger.error(f"Error in process_task_reminders job: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 def reap_stale_jobs_job():
     """장시간 running으로 멈춘 작업 주기 정리 (hang 방지)."""
     db = SessionLocal()
@@ -320,6 +374,7 @@ def start_scheduler():
     scheduler.add_job(process_replies, "interval", minutes=15, id="process_replies", replace_existing=True)
     scheduler.add_job(reap_stale_jobs_job, "interval", minutes=30, id="reap_stale_jobs", replace_existing=True)
     scheduler.add_job(process_meeting_reminders, "interval", hours=1, id="meeting_reminders", replace_existing=True)
+    scheduler.add_job(process_task_reminders, "interval", hours=1, id="task_reminders", replace_existing=True)
     scheduler.add_job(process_bounces, "interval", minutes=30, id="process_bounces", replace_existing=True)
     scheduler.start()
     logger.info("Background scheduler started")

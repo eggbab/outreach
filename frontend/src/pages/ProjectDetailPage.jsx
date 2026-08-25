@@ -664,6 +664,20 @@ function EmailTab({ projectId, showToast }) {
               <Clock className="w-4 h-4" />
               예약 발송
             </button>
+            <button
+              onClick={async () => {
+                try {
+                  const res = await api.post(`/projects/${projectId}/send-email`, { smart_send: true })
+                  showToast(res.data.message)
+                } catch (err) { showToast(err.response?.data?.detail || '예약 실패', 'error') }
+              }}
+              disabled={prospects.length === 0}
+              className="inline-flex items-center gap-2 px-4 py-2 border border-purple-300 text-purple-600 text-sm font-medium rounded-lg hover:bg-purple-50 disabled:opacity-50 cursor-pointer"
+              title="업종 데이터 기반 최적 발송 시각에 자동 예약 (주말·야간 회피)"
+            >
+              <Clock className="w-4 h-4" />
+              최적 시간 자동 발송
+            </button>
           </div>
         </div>
 
