@@ -16,7 +16,7 @@ def expire_trials():
     try:
         from app.models.models import User
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         expired_users = (
             db.query(User)
             .filter(
@@ -52,7 +52,7 @@ def process_sequences():
         from app.core.security import decrypt_value
         from app.services.sender.email import send_email
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         due_enrollments = (
             db.query(SequenceEnrollment)
             .filter(
@@ -340,13 +340,16 @@ def process_scheduled_emails():
     db = SessionLocal()
     try:
         from app.models.models import EmailSendJob
-        now = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         jobs = db.query(EmailSendJob).filter(
             EmailSendJob.status == "scheduled",
             EmailSendJob.scheduled_at <= now,
         ).all()
         for job in jobs:
             job.status = "running"
+            # started_at을 실행 시작 시각으로 리셋 — 예약 시각(행 생성)이 아니라.
+            # 안 하면 미래 예약 발송이 시작되자마자 job_reaper의 90분 기준에 걸려 오살됨.
+            job.started_at = now
             db.commit()
             # Trigger email sending in background thread
             import threading

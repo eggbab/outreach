@@ -41,20 +41,29 @@ def _best_hour_for(db, project_id: int) -> tuple[int, str]:
     return DEFAULT_HOUR, f"B2B 이메일 권장 시각(오전 {DEFAULT_HOUR}시)"
 
 
-def compute_smart_send_at(db, project_id: int, *, now: datetime | None = None) -> tuple[datetime, str]:
-    """다음 최적 발송 시각(aware UTC)과 근거를 계산.
+KST_OFFSET = timedelta(hours=9)  # 한국 표준시 = UTC+9
 
-    주말은 피하고(월~금), 오늘 그 시각이 이미 지났으면 다음 영업일로.
-    NOTE: best_hour는 한국 사용자 기준 로컬 시간대로 해석 — 저장은 naive-UTC지만
-    스케줄러가 그 값을 그대로 '벽시계 시각'으로 비교하므로 KST 운영 전제.
+
+def compute_smart_send_at(db, project_id: int, *, now: datetime | None = None) -> tuple[datetime, str]:
+    """다음 최적 발송 시각(naive-UTC)과 근거를 계산.
+
+    best_hour는 한국(KST) 벽시계 시각으로 해석한다. 계산은 KST로 하고,
+    스케줄러(process_scheduled_emails)가 naive-UTC로 비교하므로 최종 반환은 UTC로 변환.
+    주말은 피하고(월~금), KST 기준으로 오늘 그 시각이 지났으면 다음 영업일로.
     """
-    now = now or datetime.now(timezone.utc)
+    now_utc = now or datetime.now(timezone.utc)
+    if now_utc.tzinfo is not None:
+        now_utc = now_utc.replace(tzinfo=None)
+    now_kst = now_utc + KST_OFFSET
+
     hour, reason = _best_hour_for(db, project_id)
 
-    target = now.replace(hour=hour, minute=0, second=0, microsecond=0)
-    if target <= now:
-        target = target + timedelta(days=1)
-    # 주말 회피 (5=토, 6=일)
-    while target.weekday() >= 5:
-        target = target + timedelta(days=1)
-    return target, reason
+    target_kst = now_kst.replace(hour=hour, minute=0, second=0, microsecond=0)
+    if target_kst <= now_kst:
+        target_kst = target_kst + timedelta(days=1)
+    while target_kst.weekday() >= 5:  # 5=토, 6=일
+        target_kst = target_kst + timedelta(days=1)
+
+    # KST → UTC(naive)로 변환해 저장 (스케줄러 비교 기준)
+    target_utc = target_kst - KST_OFFSET
+    return target_utc, reason

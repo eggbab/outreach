@@ -140,7 +140,7 @@ def _run_email_sending_in_background(project_id: int, user_id: int):
                     f"오늘의 안전 발송 한도({enforced_limit}건)에 도달했습니다. "
                     "내일 다시 시도하세요. (계정 보호를 위한 워밍업/안전 한도)"
                 )
-                job.completed_at = datetime.now(timezone.utc)
+                job.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
                 db.commit()
                 return
 
@@ -177,7 +177,7 @@ def _run_email_sending_in_background(project_id: int, user_id: int):
             job.sent_count = result["sent"]
             job.failed_count = result["failed"]
             job.current_email = None
-            job.completed_at = datetime.now(timezone.utc)
+            job.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
             # Update GlobalProspect.times_emailed for successfully sent emails only
             if result["sent"] > 0:
                 sent_logs = (
@@ -204,7 +204,7 @@ def _run_email_sending_in_background(project_id: int, user_id: int):
         if job:
             job.status = "failed"
             job.error = str(e)
-            job.completed_at = datetime.now(timezone.utc)
+            job.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
             db.commit()
     finally:
         db.close()

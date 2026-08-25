@@ -20,7 +20,9 @@ from app.core.database import Base
 
 
 def utcnow():
-    return datetime.now(timezone.utc)
+    # naive-UTC 반환 — DB 컬럼(TIMESTAMP WITHOUT TIME ZONE)과 스케줄러/서비스의
+    # naive 비교와 일관되게. aware를 섞으면 SQLite에서 문자열 비교가 어긋난다.
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 # ──────────────────────────────────────────────

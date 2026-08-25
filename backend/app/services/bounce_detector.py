@@ -118,30 +118,44 @@ def detect_bounces_for_user(db: Session, user_id: int, gmail_email: str, gmail_a
         )
         if not prospects:
             continue
+
+        # 멱등성: 이미 반송 처리된(email_valid=False) 대상만 남으면 재처리·재환불 금지.
+        # LOOKBACK_DAYS=3 동안 같은 반송 메일이 반복 스캔되므로 이 가드가 핵심.
+        fresh = [p for p in prospects if p.email_valid is not False]
+        if not fresh:
+            continue
         processed += 1
 
-        for p in prospects:
-            p.email_valid = False  # 재발송 시 스킵
+        # 하드 바운스 1회만 환불: 전역 수신거부 풀 등록 여부로 이미 처리됐는지 판정
+        already_globally_blocked = (
+            db.query(GlobalUnsubscribe.id).filter(GlobalUnsubscribe.email == addr).first() is not None
+        )
+
+        for p in fresh:
+            p.email_valid = False  # 재발송 스킵 + 다음 폴링에서 fresh 제외
             if p.global_prospect_id:
                 gp = db.query(GlobalProspect).filter(GlobalProspect.id == p.global_prospect_id).first()
                 if gp:
                     gp.email_validity_score = 0.0 if is_hard else min(gp.email_validity_score or 0.0, 0.1)
                     gp.last_verified_at = now.replace(tzinfo=None)
 
-            # 하드 바운스만 크레딧 환불 (성공 발송 EmailLog당 이메일 비용) + 전역 차단
-            if is_hard:
-                success_logs = (
-                    db.query(EmailLog)
-                    .filter(EmailLog.prospect_id == p.id, EmailLog.status == "success")
-                    .count()
+        # 하드 바운스: 아직 차단 전이면 1회만 환불 + 전역 차단 (중복 방지)
+        if is_hard and not already_globally_blocked:
+            # 이 주소로 발송된 성공 로그 1건당 이메일 비용 환불 (fresh 대상 기준)
+            success_logs = (
+                db.query(EmailLog)
+                .filter(
+                    EmailLog.prospect_id.in_([p.id for p in fresh]),
+                    EmailLog.status == "success",
                 )
-                if success_logs:
-                    add_credits(
-                        db, user_id, CREDIT_COSTS["email"] * success_logs,
-                        f"반송 환불: {addr}", tx_type="refund",
-                    )
-                if not db.query(GlobalUnsubscribe).filter(GlobalUnsubscribe.email == addr).first():
-                    db.add(GlobalUnsubscribe(email=addr, source_user_id=user_id))
+                .count()
+            )
+            if success_logs:
+                add_credits(
+                    db, user_id, CREDIT_COSTS["email"] * success_logs,
+                    f"반송 환불: {addr}", tx_type="refund",
+                )
+            db.add(GlobalUnsubscribe(email=addr, source_user_id=user_id))
 
     return processed
 

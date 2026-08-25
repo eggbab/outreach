@@ -72,3 +72,25 @@ class TestBounceDetection:
         _setup_sent(db_session)
         monkeypatch.setattr(bounce_detector, "_fetch_bounces", lambda e, pw: [])
         assert bounce_detector.detect_bounces_for_user(db_session, 1, "me@gmail.com", "pw") == 0
+
+    def test_repeated_poll_does_not_double_refund(self, client, auth_headers, project_id, db_session, monkeypatch):
+        """같은 반송을 여러 번 스캔해도 환불은 1회만 (멱등성)."""
+        u, p, gp = _setup_sent(db_session)
+        start = u.credits
+        monkeypatch.setattr(bounce_detector, "_fetch_bounces",
+                            lambda e, pw: [("dead@corp.com", True)])
+
+        # 1차 폴링 — 환불됨
+        bounce_detector.detect_bounces_for_user(db_session, u.id, "me@gmail.com", "pw")
+        db_session.commit()
+        db_session.refresh(u)
+        after_first = u.credits
+        assert after_first == start + 2  # 2크레딧 환불
+
+        # 2차·3차 폴링 (LOOKBACK 동안 같은 반송 재스캔) — 추가 환불 없어야
+        for _ in range(3):
+            n = bounce_detector.detect_bounces_for_user(db_session, u.id, "me@gmail.com", "pw")
+            db_session.commit()
+            assert n == 0  # 이미 처리됨
+        db_session.refresh(u)
+        assert u.credits == after_first  # 크레딧 불변
