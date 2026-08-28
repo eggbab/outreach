@@ -19,6 +19,9 @@ import {
 export default function DashboardPage() {
   const navigate = useNavigate()
   const [account, setAccount] = useState(null)  // 크레딧 잔액 + 서비스 키
+  const [keyInput, setKeyInput] = useState('')
+  const [keyBusy, setKeyBusy] = useState(false)
+  const [keyError, setKeyError] = useState('')
   const [stats, setStats] = useState({
     total_projects: 0,
     total_prospects: 0,
@@ -169,16 +172,51 @@ export default function DashboardPage() {
                 )}
               </p>
             ) : (
-              <Link to="/settings" className="text-sm text-blue-600 hover:underline">
-                등록된 키 없음 — 설정에서 등록하기
-              </Link>
+              /* 키를 이미 받아둔 고객이 설정까지 찾아가지 않도록 여기서 바로 등록 */
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault()
+                  const key = keyInput.trim()
+                  if (!key) return
+                  setKeyBusy(true)
+                  setKeyError('')
+                  try {
+                    const res = await api.post('/auth/activate-key', { service_key: key })
+                    showToast(res.data.message)
+                    setKeyInput('')
+                    fetchData()  // 잔액·키 표시 갱신
+                  } catch (err) {
+                    setKeyError(err.response?.data?.detail || '등록에 실패했습니다')
+                  } finally {
+                    setKeyBusy(false)
+                  }
+                }}
+                className="flex flex-wrap items-center gap-2"
+              >
+                <input
+                  type="text"
+                  value={keyInput}
+                  onChange={(e) => setKeyInput(e.target.value)}
+                  placeholder="구매한 서비스 키 입력 (sk_...)"
+                  className="w-64 max-w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  type="submit"
+                  disabled={keyBusy || !keyInput.trim()}
+                  className="px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
+                >
+                  {keyBusy ? '등록 중...' : '등록'}
+                </button>
+                {keyError && <p className="w-full text-xs text-red-600">{keyError}</p>}
+              </form>
             )}
           </div>
+          {/* 키가 없는 사람 = 아직 구매 전 → 구매(충전) 화면으로 유도 */}
           <Link
             to="/pricing"
             className="ml-auto px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
           >
-            크레딧 충전
+            {account.service_key ? '크레딧 충전' : '크레딧 구매하기'}
           </Link>
         </div>
       )}
