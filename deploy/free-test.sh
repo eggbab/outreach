@@ -45,6 +45,11 @@ start() {
   docker rm -f "$NAME" >/dev/null 2>&1 || true
   docker run -d --name "$NAME" -p 8000:8000 --memory=2g --env-file "$WORK/env" "$IMAGE" >/dev/null
 
+  # 통로가 끊기면 스스로 다시 연결하도록 감시견을 띄운다.
+  pkill -f "tunnel-keeper.sh" 2>/dev/null || true
+  nohup bash "$DIR/deploy/tunnel-keeper.sh" "$WORK" "$NAME" "$IMAGE" "$DIR/deploy/.env" \
+    >/dev/null 2>&1 &
+
   say "3/3  뜰 때까지 기다리는 중"
   for _ in $(seq 1 30); do
     sleep 2
@@ -72,7 +77,9 @@ case "${1:-start}" in
   start) start ;;
   url)   cat "$WORK/url.txt" 2>/dev/null || die "켜져 있지 않습니다." ;;
   logs)  docker logs -f "$NAME" ;;
+  watch) tail -f "$WORK/keeper.log" ;;
   stop)
+    pkill -f "tunnel-keeper.sh" 2>/dev/null || true   # 감시견부터 꺼야 다시 안 살린다
     docker rm -f "$NAME" >/dev/null 2>&1 || true
     pkill -f "cloudflared tunnel --url http://localhost:8000" 2>/dev/null || true
     echo "껐습니다." ;;
