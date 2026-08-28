@@ -142,6 +142,37 @@ class AdminUserSummary(BaseModel):
     last_active: Optional[datetime] = None
 
 
+class CreditTxItem(BaseModel):
+    created_at: datetime
+    tx_type: str
+    amount: int
+    balance_after: int
+    description: Optional[str] = None
+
+
+class AdminUserUsage(BaseModel):
+    """사장님이 '이 사람이 얼마나 썼나'를 한 화면에서 보기 위한 집계."""
+    id: int
+    email: str
+    name: str
+    plan: str
+    is_active: bool
+    credits: int
+    created_at: datetime
+
+    project_count: int = 0
+    prospect_count: int = 0        # 수집한 잠재고객 수
+    emails_sent: int = 0
+    emails_opened: int = 0
+    emails_replied: int = 0
+    dms_sent: int = 0
+
+    credits_purchased: int = 0     # 충전받은 총량
+    credits_spent: int = 0         # 사용한 총량(절대값)
+    last_active: Optional[datetime] = None
+    recent_transactions: list[CreditTxItem] = []
+
+
 class AdminUserListResponse(BaseModel):
     items: list[AdminUserSummary]
     total: int
@@ -233,6 +264,71 @@ def get_user_detail(
         is_admin=u.is_admin, is_active=u.is_active, credits=u.credits,
         created_at=u.created_at, project_count=proj_count,
         total_emails_sent=emails, last_active=last_email,
+    )
+
+
+@router.get("/users/{user_id}/usage", response_model=AdminUserUsage)
+def get_user_usage(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(_require_admin),
+):
+    """이 사용자가 무엇을 얼마나 썼는지 + 크레딧 흐름."""
+    from app.models.models import CreditTransaction, DmLog, Prospect
+
+    u = db.query(User).filter(User.id == user_id).first()
+    if not u:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다")
+
+    def _count(q):
+        return q.scalar() or 0
+
+    proj_ids = [p.id for p in db.query(Project.id).filter(Project.user_id == u.id).all()]
+
+    prospects = 0
+    if proj_ids:
+        prospects = _count(
+            db.query(func.count(Prospect.id)).filter(Prospect.project_id.in_(proj_ids))
+        )
+
+    emails_sent = _count(db.query(func.count(EmailLog.id)).filter(
+        EmailLog.user_id == u.id, EmailLog.status == "success"))
+    emails_opened = _count(db.query(func.count(EmailLog.id)).filter(
+        EmailLog.user_id == u.id, EmailLog.opened_at.isnot(None)))
+    emails_replied = _count(db.query(func.count(EmailLog.id)).filter(
+        EmailLog.user_id == u.id, EmailLog.replied_at.isnot(None)))
+    dms_sent = _count(db.query(func.count(DmLog.id)).filter(
+        DmLog.user_id == u.id, DmLog.status == "success"))
+
+    # 충전(양수)과 사용(음수)을 나눠 합산 — 환불도 충전 쪽에 잡힌다.
+    purchased = _count(db.query(func.sum(CreditTransaction.amount)).filter(
+        CreditTransaction.user_id == u.id, CreditTransaction.amount > 0))
+    spent = _count(db.query(func.sum(CreditTransaction.amount)).filter(
+        CreditTransaction.user_id == u.id, CreditTransaction.amount < 0))
+
+    last_email = db.query(func.max(EmailLog.sent_at)).filter(EmailLog.user_id == u.id).scalar()
+
+    txs = (
+        db.query(CreditTransaction)
+        .filter(CreditTransaction.user_id == u.id)
+        .order_by(CreditTransaction.created_at.desc())
+        .limit(15).all()
+    )
+
+    return AdminUserUsage(
+        id=u.id, email=u.email, name=u.name, plan=u.plan,
+        is_active=u.is_active, credits=u.credits, created_at=u.created_at,
+        project_count=len(proj_ids), prospect_count=prospects,
+        emails_sent=emails_sent, emails_opened=emails_opened,
+        emails_replied=emails_replied, dms_sent=dms_sent,
+        credits_purchased=int(purchased), credits_spent=abs(int(spent)),
+        last_active=last_email,
+        recent_transactions=[
+            CreditTxItem(
+                created_at=t.created_at, tx_type=t.tx_type, amount=t.amount,
+                balance_after=t.balance_after, description=t.description,
+            ) for t in txs
+        ],
     )
 
 

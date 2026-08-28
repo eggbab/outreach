@@ -11,9 +11,8 @@ export default function AdminPage() {
   const { user } = useAuth()
   const [tab, setTab] = useState('stats')
 
-  // 비관리자 처리: 자동 승격 옵션 제공
   if (!user) return <Navigate to="/login" replace />
-  if (!user.is_admin) return <NonAdminGate />
+  if (!user.is_admin) return <NotAdmin />
 
   const tabs = [
     { id: 'stats', label: '매출·통계', icon: TrendingUp },
@@ -60,44 +59,135 @@ export default function AdminPage() {
 }
 
 // ─────────────────────────────────
-// 비관리자 진입 가드 — bootstrap 옵션 제공
+// 관리자가 아닌 사용자
+// (자기 자신을 관리자로 올리는 기능은 두지 않는다 — 권한은 DB에서만 부여)
 // ─────────────────────────────────
-function NonAdminGate() {
-  const [bootstrapping, setBootstrapping] = useState(false)
+function NotAdmin() {
+  return (
+    <div className="max-w-md mx-auto mt-20 bg-white rounded-2xl border border-gray-200 p-8 text-center">
+      <Crown className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+      <h2 className="text-xl font-bold text-gray-900 mb-2">관리자 전용 페이지</h2>
+      <p className="text-sm text-gray-600">
+        이 페이지는 관리자만 볼 수 있습니다.
+      </p>
+    </div>
+  )
+}
+
+// ─────────────────────────────────
+// 사용자 사용현황 — 이 사람이 뭘 얼마나 썼나
+// ─────────────────────────────────
+function UserUsageModal({ user, onClose }) {
+  const [data, setData] = useState(null)
   const [error, setError] = useState('')
 
-  const tryBootstrap = async () => {
-    setBootstrapping(true)
-    setError('')
-    try {
-      await api.post('/admin/bootstrap-first-admin')
-      window.location.reload()
-    } catch (e) {
-      setError(e.response?.data?.detail || '실패했습니다.')
-    } finally {
-      setBootstrapping(false)
-    }
+  useEffect(() => {
+    api.get(`/admin/users/${user.id}/usage`)
+      .then(r => setData(r.data))
+      .catch(e => setError(e.response?.data?.detail || '불러오지 못했습니다'))
+  }, [user.id])
+
+  const fmt = (n) => (n || 0).toLocaleString('ko-KR')
+  const when = (d) => (d ? new Date(d).toLocaleString('ko-KR') : '없음')
+
+  const TX_LABEL = {
+    purchase: '충전', admin_grant: '관리자 조정', refund: '환불',
+    scrape: '수집', email: '이메일', dm: 'DM',
   }
 
   return (
-    <div className="max-w-md mx-auto mt-20 bg-white rounded-2xl border border-gray-200 p-8 text-center">
-      <Crown className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
-      <h2 className="text-xl font-bold text-gray-900 mb-2">관리자 전용 페이지</h2>
-      <p className="text-sm text-gray-600 mb-4">
-        이 페이지는 관리자만 접근할 수 있습니다.
-      </p>
-      <p className="text-xs text-gray-500 mb-4">
-        만약 본인이 사장님(최초 가입자)이고 아직 관리자가 한 명도 지정되지 않았다면,
-        아래 버튼으로 본인을 관리자로 승격할 수 있습니다.
-      </p>
-      <button
-        onClick={tryBootstrap}
-        disabled={bootstrapping}
-        className="px-4 py-2 bg-yellow-500 text-white text-sm font-medium rounded-lg hover:bg-yellow-600 disabled:opacity-50 cursor-pointer"
-      >
-        {bootstrapping ? '처리 중...' : '나를 관리자로 만들기 (최초 1회)'}
-      </button>
-      {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-start justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">{user.name} 사용현황</h3>
+            <p className="text-sm text-gray-500">{user.email}</p>
+          </div>
+          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 cursor-pointer">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {error && <p className="p-6 text-sm text-red-600">{error}</p>}
+        {!data && !error && <p className="p-6 text-sm text-gray-500">불러오는 중...</p>}
+
+        {data && (
+          <div className="p-6 space-y-6">
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-2">크레딧</p>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: '현재 잔액', value: fmt(data.credits), accent: 'text-blue-600' },
+                  { label: '총 충전', value: fmt(data.credits_purchased), accent: 'text-green-600' },
+                  { label: '총 사용', value: fmt(data.credits_spent), accent: 'text-gray-700' },
+                ].map(c => (
+                  <div key={c.label} className="bg-gray-50 rounded-lg p-3">
+                    <div className="text-xs text-gray-500">{c.label}</div>
+                    <div className={`text-lg font-bold tabular-nums ${c.accent}`}>{c.value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-2">사용량</p>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: '프로젝트', value: fmt(data.project_count) },
+                  { label: '수집한 업체', value: fmt(data.prospect_count) },
+                  { label: '이메일 발송', value: fmt(data.emails_sent) },
+                  { label: '이메일 열람', value: fmt(data.emails_opened) },
+                  { label: '답장 받음', value: fmt(data.emails_replied) },
+                  { label: 'DM 발송', value: fmt(data.dms_sent) },
+                ].map(c => (
+                  <div key={c.label} className="bg-gray-50 rounded-lg p-3">
+                    <div className="text-xs text-gray-500">{c.label}</div>
+                    <div className="text-lg font-bold text-gray-900 tabular-nums">{c.value}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="text-xs text-gray-500">
+              가입일 {when(data.created_at)} · 마지막 발송 {when(data.last_active)}
+            </div>
+
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-2">크레딧 내역 (최근 15건)</p>
+              {data.recent_transactions.length === 0 ? (
+                <p className="text-sm text-gray-400">내역이 없습니다.</p>
+              ) : (
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">일시</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">종류</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">증감</th>
+                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">잔액</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">내용</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {data.recent_transactions.map((t, i) => (
+                        <tr key={i}>
+                          <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{when(t.created_at)}</td>
+                          <td className="px-3 py-2 text-xs text-gray-600">{TX_LABEL[t.tx_type] || t.tx_type}</td>
+                          <td className={`px-3 py-2 text-right tabular-nums font-medium ${
+                            t.amount > 0 ? 'text-green-600' : 'text-red-600'
+                          }`}>{t.amount > 0 ? '+' : ''}{fmt(t.amount)}</td>
+                          <td className="px-3 py-2 text-right tabular-nums text-gray-500">{fmt(t.balance_after)}</td>
+                          <td className="px-3 py-2 text-xs text-gray-600">{t.description || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -322,6 +412,7 @@ function UsersTab() {
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [grantTarget, setGrantTarget] = useState(null)
+  const [detailTarget, setDetailTarget] = useState(null)
 
   const fetchList = () => {
     setLoading(true)
@@ -338,14 +429,6 @@ function UsersTab() {
   const toggleActive = async (u) => {
     try {
       await api.patch(`/admin/users/${u.id}`, { is_active: !u.is_active })
-      fetchList()
-    } catch (e) { alert(e.response?.data?.detail || '실패') }
-  }
-
-  const toggleAdmin = async (u) => {
-    if (!confirm(`${u.email}을(를) ${u.is_admin ? '관리자에서 해제' : '관리자로 승격'}하시겠습니까?`)) return
-    try {
-      await api.patch(`/admin/users/${u.id}`, { is_admin: !u.is_admin })
       fetchList()
     } catch (e) { alert(e.response?.data?.detail || '실패') }
   }
@@ -421,36 +504,37 @@ function UsersTab() {
                       {new Date(u.created_at).toLocaleDateString('ko-KR')}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-1">
+                      {/* 아이콘만 두면 무슨 버튼인지 알 수 없다 — 글자를 함께 보여준다 */}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                          onClick={() => setDetailTarget(u)}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 cursor-pointer"
+                        >
+                          <Search className="w-3.5 h-3.5" /> 사용현황
+                        </button>
                         <button
                           onClick={() => setGrantTarget(u)}
-                          title="크레딧 부여/차감"
-                          className="p-1.5 text-yellow-600 hover:bg-yellow-50 rounded cursor-pointer"
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-yellow-800 bg-yellow-50 hover:bg-yellow-100 cursor-pointer"
                         >
-                          <Coins className="w-4 h-4" />
+                          <Coins className="w-3.5 h-3.5" /> 크레딧 조정
                         </button>
                         <button
                           onClick={() => toggleActive(u)}
-                          title={u.is_active ? '계정 정지' : '계정 활성화'}
-                          className={`p-1.5 rounded cursor-pointer ${
-                            u.is_active ? 'text-red-600 hover:bg-red-50' : 'text-green-600 hover:bg-green-50'
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium cursor-pointer ${
+                            u.is_active
+                              ? 'text-red-700 bg-red-50 hover:bg-red-100'
+                              : 'text-green-700 bg-green-50 hover:bg-green-100'
                           }`}
                         >
-                          {u.is_active ? <ShieldOff className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
-                        </button>
-                        <button
-                          onClick={() => toggleAdmin(u)}
-                          title={u.is_admin ? '관리자 해제' : '관리자 승격'}
-                          className="p-1.5 text-purple-600 hover:bg-purple-50 rounded cursor-pointer"
-                        >
-                          <Crown className="w-4 h-4" />
+                          {u.is_active
+                            ? <><ShieldOff className="w-3.5 h-3.5" /> 정지</>
+                            : <><ShieldCheck className="w-3.5 h-3.5" /> 정지해제</>}
                         </button>
                         <button
                           onClick={() => remove(u)}
-                          title="삭제"
-                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded cursor-pointer"
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-gray-500 bg-gray-50 hover:bg-red-50 hover:text-red-600 cursor-pointer"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="w-3.5 h-3.5" /> 삭제
                         </button>
                       </div>
                     </td>
@@ -489,11 +573,15 @@ function UsersTab() {
           onSuccess={() => { setGrantTarget(null); fetchList() }}
         />
       )}
+      {detailTarget && (
+        <UserUsageModal user={detailTarget} onClose={() => setDetailTarget(null)} />
+      )}
     </div>
   )
 }
 
 function GrantCreditsModal({ user, onClose, onSuccess }) {
+  const [mode, setMode] = useState('add')   // add=주기, sub=빼기
   const [amount, setAmount] = useState(100)
   const [reason, setReason] = useState('')
   const [loading, setLoading] = useState(false)
@@ -505,7 +593,8 @@ function GrantCreditsModal({ user, onClose, onSuccess }) {
     if (!reason.trim()) { setError('사유를 입력하세요.'); return }
     setLoading(true)
     try {
-      await api.post(`/admin/users/${user.id}/grant-credits`, { amount: Number(amount), reason })
+      const signed = (mode === 'sub' ? -1 : 1) * Math.abs(Number(amount) || 0)
+      await api.post(`/admin/users/${user.id}/grant-credits`, { amount: signed, reason })
       onSuccess()
     } catch (e) {
       setError(e.response?.data?.detail || '실패')
@@ -519,15 +608,47 @@ function GrantCreditsModal({ user, onClose, onSuccess }) {
         <p className="text-sm text-gray-500 mb-4">{user.email} (현재 {user.credits.toLocaleString('ko-KR')}크레딧)</p>
 
         <form onSubmit={submit} className="space-y-4">
+          {/* 음수 입력을 요구하면 헷갈린다 — 주기/빼기를 버튼으로 고르게 한다 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">변경량 (양수=부여, 음수=차감)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">무엇을 할까요?</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setMode('add')}
+                className={`py-2 rounded-lg text-sm font-medium cursor-pointer border ${
+                  mode === 'add'
+                    ? 'bg-green-600 text-white border-green-600'
+                    : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                }`}
+              >+ 크레딧 주기</button>
+              <button
+                type="button"
+                onClick={() => setMode('sub')}
+                className={`py-2 rounded-lg text-sm font-medium cursor-pointer border ${
+                  mode === 'sub'
+                    ? 'bg-red-600 text-white border-red-600'
+                    : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                }`}
+              >− 크레딧 빼기</button>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              얼마나 {mode === 'add' ? '줄까요' : '뺄까요'}?
+            </label>
             <input
               type="number"
+              min="0"
               value={amount}
               onChange={e => setAmount(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm tabular-nums"
               placeholder="100"
             />
+            <p className="mt-1 text-xs text-gray-500">
+              {mode === 'add'
+                ? `적용 후 ${(user.credits + (Number(amount) || 0)).toLocaleString('ko-KR')}크레딧이 됩니다.`
+                : `적용 후 ${Math.max(0, user.credits - (Number(amount) || 0)).toLocaleString('ko-KR')}크레딧이 됩니다. (잔액보다 많이 뺄 수 없습니다)`}
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">사유 (필수, 거래 내역에 기록됨)</label>
@@ -543,8 +664,10 @@ function GrantCreditsModal({ user, onClose, onSuccess }) {
           {error && <p className="text-sm text-red-600">{error}</p>}
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className="flex-1 py-2 border border-gray-300 rounded-lg text-sm cursor-pointer">취소</button>
-            <button type="submit" disabled={loading} className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 cursor-pointer">
-              {loading ? '처리 중...' : '적용'}
+            <button type="submit" disabled={loading} className={`flex-1 py-2 text-white text-sm rounded-lg disabled:opacity-50 cursor-pointer ${
+              mode === 'sub' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'
+            }`}>
+              {loading ? '처리 중...' : (mode === 'sub' ? '빼기' : '주기')}
             </button>
           </div>
         </form>
