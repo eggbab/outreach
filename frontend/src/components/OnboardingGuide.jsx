@@ -62,9 +62,14 @@ export default function OnboardingGuide() {
   const [step, setStep] = useState(0)
   const [rect, setRect] = useState(null)
   const [ready, setReady] = useState(false) // target element found
+  // 강조된 버튼을 누르면 사용자가 실제 작업(모달 입력 등)을 해야 하므로 안내를 잠시 접는다.
+  // 예전엔 여기서 아예 dismiss 해버려서 2단계에서 안내가 영영 끊겼다.
+  const [paused, setPaused] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
   const retriesRef = useRef(null)
+  // 스크롤은 단계마다 한 번만 — 매 추적마다 하면 사용자의 스크롤과 싸운다.
+  const scrolledForStepRef = useRef(null)
 
   useEffect(() => {
     // 끝 슬래시를 붙여 307 리다이렉트를 피한다 (라우트가 '/'로 정의돼 있음)
@@ -77,12 +82,13 @@ export default function OnboardingGuide() {
 
   // Navigate to the step's page if needed
   useEffect(() => {
-    if (!show) return
+    // 접혀 있는 동안엔 페이지를 옮기지 않는다 — 사용자가 작업 중인 화면에서 끌려나가면 안 된다.
+    if (!show || paused) return
     const s = STEPS[step]
     if (s.page && location.pathname !== s.page) {
       navigate(s.page)
     }
-  }, [show, step])
+  }, [show, step, paused])
 
   // Find target element (with retries for lazy-loaded pages)
   const track = useCallback(() => {
@@ -98,13 +104,18 @@ export default function OnboardingGuide() {
       setReady(false)
       return
     }
+    // 강조할 대상이 화면 밖에 있으면 설명 카드까지 안 보인다 → 화면 안으로 끌어온다.
+    if (scrolledForStepRef.current !== step) {
+      scrolledForStepRef.current = step
+      el.scrollIntoView({ block: 'center', behavior: 'auto' })
+    }
     const r = el.getBoundingClientRect()
     setRect({ top: r.top, left: r.left, width: r.width, height: r.height })
     setReady(true)
   }, [step])
 
   useEffect(() => {
-    if (!show) return
+    if (!show || paused) return
     setReady(false)
     setRect(null)
 
@@ -126,7 +137,7 @@ export default function OnboardingGuide() {
       window.removeEventListener('resize', track)
       window.removeEventListener('scroll', track, true)
     }
-  }, [show, step, location.pathname, track])
+  }, [show, step, paused, location.pathname, track])
 
   const completeStep = (id) => {
     if (id === 'welcome' || id === 'complete') return
@@ -149,6 +160,30 @@ export default function OnboardingGuide() {
   }
 
   if (!show) return null
+
+  // 접힘 — 화면을 가리지 않고, 이어보기 버튼만 남긴다.
+  if (paused) {
+    return (
+      <div className="fixed bottom-6 right-6" style={{ zIndex: 10000 }}>
+        <button
+          onClick={() => setPaused(false)}
+          className="flex items-center gap-2 rounded-full bg-blue-600 py-3 pl-4 pr-5 text-sm font-medium text-white shadow-lg hover:bg-blue-700 cursor-pointer"
+        >
+          <Sparkles className="h-4 w-4" />
+          안내 계속하기
+          <span className="rounded-full bg-blue-500/70 px-2 py-0.5 text-xs tabular-nums">
+            {step + 1}/{STEPS.length}
+          </span>
+        </button>
+        <button
+          onClick={dismiss}
+          className="mt-2 block w-full text-center text-xs text-gray-400 hover:text-gray-600 cursor-pointer"
+        >
+          안내 그만보기
+        </button>
+      </div>
+    )
+  }
 
   const s = STEPS[step]
   const isSpotlight = s.type === 'spotlight'
@@ -244,8 +279,9 @@ export default function OnboardingGuide() {
           }}
           onClick={() => {
             completeStep(s.id)
-            setShow(false)
-            api.post('/onboarding/dismiss').catch(() => {})
+            // 안내를 끄지 말고 접어둔다. 사용자가 작업을 마치면 '안내 계속하기'로 돌아온다.
+            setPaused(true)
+            if (step + 1 < STEPS.length) setStep(step + 1)
             const el = document.querySelector(s.target)
             if (el) {
               const clickable = el.matches('button, a, [role="button"]')
