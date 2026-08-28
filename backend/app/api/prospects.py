@@ -39,6 +39,8 @@ class ProspectResponse(BaseModel):
     website: Optional[str] = None
     source: Optional[str] = None
     category: Optional[str] = None
+    description: Optional[str] = None
+    keyword: Optional[str] = None        # 이 업체를 찾아낸 검색 키워드
     score: int = 0
     status: str
     collected_at: datetime
@@ -61,12 +63,22 @@ class ProspectImportRequest(BaseModel):
     prospects: list[ProspectImportItem]
 
 
+class ChannelStats(BaseModel):
+    """현재 필터 기준 — 채널별로 연락 가능한 업체 수."""
+    email: int = 0        # 이메일 보유
+    phone: int = 0        # 전화번호 보유
+    instagram: int = 0    # 인스타그램 보유
+    email_or_instagram: int = 0   # 이메일·인스타 중 하나라도 (발송 가능 총합)
+    none: int = 0         # 연락처 전혀 없음
+
+
 class ProspectListResponse(BaseModel):
     items: list[ProspectResponse]
     total: int
     total_pages: int
     page: int
     page_size: int
+    channel_stats: ChannelStats = ChannelStats()
 
 
 class ProspectStatusUpdate(BaseModel):
@@ -99,6 +111,8 @@ def list_prospects(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     status_filter: Optional[str] = Query(None, alias="status"),
+    has_email: Optional[bool] = Query(None, description="true면 이메일 보유 업체만"),
+    has_instagram: Optional[bool] = Query(None, description="true면 인스타 보유 업체만"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -107,6 +121,10 @@ def list_prospects(
     query = db.query(Prospect).filter(Prospect.project_id == project_id)
     if status_filter:
         query = query.filter(Prospect.status == status_filter)
+    if has_email is True:
+        query = query.filter(Prospect.email.isnot(None))
+    if has_instagram is True:
+        query = query.filter(Prospect.instagram.isnot(None))
 
     total = query.count()
     prospects = (
@@ -116,12 +134,50 @@ def list_prospects(
         .all()
     )
 
+    # 키워드 텍스트를 한 번에 로딩 (행마다 조회하지 않도록)
+    kw_ids = {p.keyword_id for p in prospects if p.keyword_id}
+    kw_by_id = {}
+    if kw_ids:
+        from app.models.models import Keyword
+        kw_by_id = {
+            k.id: k.keyword
+            for k in db.query(Keyword).filter(Keyword.id.in_(kw_ids)).all()
+        }
+
+    items = []
+    for pr in prospects:
+        item = ProspectResponse.model_validate(pr)
+        item.keyword = kw_by_id.get(pr.keyword_id)
+        items.append(item)
+
+    # 채널 집계 — 페이지가 아니라 필터 전체 기준 (발송 계획용)
+    from sqlalchemy import case, func as sa_func
+    has_email = case((Prospect.email.isnot(None), 1), else_=0)
+    has_phone = case((Prospect.phone.isnot(None), 1), else_=0)
+    has_insta = case((Prospect.instagram.isnot(None), 1), else_=0)
+    has_any_send = case(
+        ((Prospect.email.isnot(None)) | (Prospect.instagram.isnot(None)), 1), else_=0)
+    has_none = case(
+        ((Prospect.email.is_(None)) & (Prospect.instagram.is_(None)) & (Prospect.phone.is_(None)), 1),
+        else_=0)
+    row = query.with_entities(
+        sa_func.coalesce(sa_func.sum(has_email), 0),
+        sa_func.coalesce(sa_func.sum(has_phone), 0),
+        sa_func.coalesce(sa_func.sum(has_insta), 0),
+        sa_func.coalesce(sa_func.sum(has_any_send), 0),
+        sa_func.coalesce(sa_func.sum(has_none), 0),
+    ).one()
+
     return ProspectListResponse(
-        items=prospects,
+        items=items,
         total=total,
         total_pages=math.ceil(total / page_size) if total > 0 else 1,
         page=page,
         page_size=page_size,
+        channel_stats=ChannelStats(
+            email=int(row[0]), phone=int(row[1]), instagram=int(row[2]),
+            email_or_instagram=int(row[3]), none=int(row[4]),
+        ),
     )
 
 

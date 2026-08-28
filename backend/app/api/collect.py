@@ -20,6 +20,8 @@ router = APIRouter(
 class CollectRequest(BaseModel):
     max_results: int = 20  # 키워드당 최대 수집 건수
     match_level: str = "medium"  # loose | medium | strict — 키워드 매칭 정밀도
+    # 사용할 수집 채널. 비우면 전부 사용. (kakao/naver/naver_shopping/naver_map/google)
+    sources: Optional[list[str]] = None
 
 
 class CollectResponse(BaseModel):
@@ -28,6 +30,8 @@ class CollectResponse(BaseModel):
 
 
 class CollectionStatusResponse(BaseModel):
+    # 소스별 수집 건수 — 어떤 채널에서 몇 건 가져왔는지
+    source_stats: Optional[dict] = None
     status: str  # idle, running, completed, error
     current: int = 0
     total: int = 0
@@ -47,12 +51,12 @@ def _get_project_or_404(project_id: int, user_id: int, db: Session) -> Project:
     return project
 
 
-def _run_collection_in_background(project_id: int, user_id: int, max_results: int = 20, match_level: str = "medium"):
+def _run_collection_in_background(project_id: int, user_id: int, max_results: int = 20, match_level: str = "medium", sources=None):
     """Run collection in a background thread with its own DB session."""
     db = SessionLocal()
     try:
         manager = CollectionManager(db)
-        manager.run_collection(project_id, user_id, max_results=max_results, match_level=match_level)
+        manager.run_collection(project_id, user_id, max_results=max_results, match_level=match_level, sources=sources)
     except Exception as e:
         # Update job status on failure
         job = (
@@ -111,10 +115,12 @@ def start_collection(
 
     max_results = max(1, min(req.max_results, 100))
     match_level = req.match_level if req.match_level in ("loose", "medium", "strict") else "medium"
+    VALID_SOURCES = {"kakao", "naver", "naver_shopping", "naver_map", "google"}
+    sources = [s for s in (req.sources or []) if s in VALID_SOURCES] or None
 
     thread = threading.Thread(
         target=_run_collection_in_background,
-        args=(project_id, current_user.id, max_results, match_level),
+        args=(project_id, current_user.id, max_results, match_level, sources),
         daemon=True,
     )
     thread.start()
@@ -150,11 +156,19 @@ def get_collection_status(
     if st == "failed":
         st = "error"
 
+    stats = None
+    if job.source_stats:
+        import json
+        try:
+            stats = json.loads(job.source_stats)
+        except Exception:
+            stats = None
     return CollectionStatusResponse(
         status=st,
         current=job.processed_tasks,
         total=job.total_tasks,
         message=job.current_task,
         prospects_found=job.prospects_found,
+        source_stats=stats,
         error=job.error,
     )

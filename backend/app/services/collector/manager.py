@@ -71,7 +71,7 @@ class CollectionManager:
     # All sources to try, in order of priority
     ALL_SOURCES = ["naver", "google", "naver_shopping", "naver_map"]
 
-    def run_collection(self, project_id: int, user_id: int, max_results: int = 20, match_level: str = "medium") -> None:
+    def run_collection(self, project_id: int, user_id: int, max_results: int = 20, match_level: str = "medium", sources: list[str] | None = None) -> None:
         keywords = (
             self.db.query(Keyword)
             .filter(Keyword.project_id == project_id)
@@ -108,6 +108,7 @@ class CollectionManager:
             return
 
         total_prospects_found = 0
+        cumulative_source_counts: dict[str, int] = {}  # 전체 실행의 소스별 합계
 
         for i, (keyword_id, keyword_text, max_results) in enumerate(tasks):
             job.processed_tasks = i
@@ -119,7 +120,12 @@ class CollectionManager:
                 # 파이프라인 순서대로 실행, 목표량 채우면 중단 (중복 소스 호출 없음)
                 raw_prospects = []
                 source_counts: dict[str, int] = {}
-                for source_key, fn in COLLECTION_PIPELINE:
+                # 사용자가 채널을 골랐으면 그것만 쓴다 (순서는 파이프라인 우선순위 유지)
+                pipeline = [
+                    (k, f) for k, f in COLLECTION_PIPELINE
+                    if not sources or k in sources
+                ]
+                for source_key, fn in pipeline:
                     remaining = max_results - len(raw_prospects)
                     if remaining <= 0:
                         break
@@ -134,6 +140,10 @@ class CollectionManager:
                         source_counts[source_key] = 0
                         continue
                 logger.info(f"'{keyword_text}' 소스별 수집: {source_counts}")
+                for k, v in source_counts.items():
+                    cumulative_source_counts[k] = cumulative_source_counts.get(k, 0) + v
+                import json as _json
+                job.source_stats = _json.dumps(cumulative_source_counts, ensure_ascii=False)
                 saved = self._save_prospects(project_id, raw_prospects, user_id, keyword_id)
                 total_prospects_found += saved
 
@@ -225,6 +235,7 @@ class CollectionManager:
                 website=data.get("website"),
                 source=data.get("source"),
                 category=data.get("category"),
+                description=data.get("description"),
                 keyword_id=keyword_id,
                 status="collected",
             )

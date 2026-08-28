@@ -244,6 +244,13 @@ def search_naver_map(keyword: str, max_results: int = 15, match_level: str = "me
                 if not (email or insta or place_phone):
                     continue
 
+                # 지도 응답에 딸려온 정보로 업체 요약 구성
+                desc_parts = []
+                if place.get("category"):
+                    cat = place["category"]
+                    desc_parts.append(", ".join(cat) if isinstance(cat, list) else str(cat))
+                if place.get("roadAddress") or place.get("address"):
+                    desc_parts.append(place.get("roadAddress") or place.get("address"))
                 prospects.append({
                     "name": place_name,
                     "website": website if website else None,
@@ -252,6 +259,7 @@ def search_naver_map(keyword: str, max_results: int = 15, match_level: str = "me
                     "instagram": insta,
                     "source": "naver_map",
                     "category": keyword,
+                    "description": " · ".join(desc_parts) or None,
                 })
 
             browser.close()

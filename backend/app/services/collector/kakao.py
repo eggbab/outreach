@@ -69,6 +69,9 @@ def search_kakao(keyword: str, max_results: int = 15, match_level: str = "medium
                         "source": "kakao",
                         "category": category or keyword,
                         "address": doc.get("road_address_name") or doc.get("address_name") or None,
+                        "description": " · ".join(
+                            x for x in (category, doc.get("road_address_name") or doc.get("address_name")) if x
+                        ) or None,
                     })
 
                 if data.get("meta", {}).get("is_end", True):

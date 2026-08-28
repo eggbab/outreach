@@ -13,9 +13,10 @@ const statusConfig = {
 }
 
 const sourceConfig = {
-  naver: { label: '네이버', color: 'bg-green-100 text-green-700' },
-  naver_shopping: { label: '네이버', color: 'bg-green-100 text-green-700' },
-  naver_map: { label: '네이버', color: 'bg-green-100 text-green-700' },
+  naver: { label: '네이버 검색', color: 'bg-green-100 text-green-700' },
+  naver_shopping: { label: '네이버 쇼핑', color: 'bg-green-100 text-green-700' },
+  naver_map: { label: '네이버 지도', color: 'bg-green-100 text-green-700' },
+  kakao: { label: '카카오 지도', color: 'bg-yellow-100 text-yellow-700' },
   google: { label: '구글', color: 'bg-blue-100 text-blue-700' },
   instagram: { label: '인스타그램', color: 'bg-pink-100 text-pink-700' },
 }
@@ -28,6 +29,8 @@ const getScoreColor = (score) => {
 
 export default function ProspectTable({
   prospects = [],
+  channelStats = null,   // {email, phone, instagram, email_or_instagram, none}
+  total = 0,
   page = 1,
   totalPages = 1,
   onPageChange,
@@ -42,18 +45,41 @@ export default function ProspectTable({
 
   return (
     <div>
+      {/* 연락 수단 집계 — 발송 계획을 세울 수 있게 채널별 보유 현황을 먼저 보여준다 */}
+      {channelStats && total > 0 && (
+        <div className="mb-4 bg-white border border-gray-200 rounded-lg px-4 py-3">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+            <span className="font-medium text-gray-900">전체 {total.toLocaleString()}곳</span>
+            <span className="text-gray-300">|</span>
+            <span className="text-gray-600">📧 이메일 보유 <b className="text-blue-600">{channelStats.email}</b>곳</span>
+            <span className="text-gray-600">📷 인스타그램 보유 <b className="text-pink-600">{channelStats.instagram}</b>곳</span>
+            <span className="text-gray-600">📞 전화번호 보유 <b className="text-green-600">{channelStats.phone}</b>곳</span>
+            <span className="text-gray-300">|</span>
+            <span className="text-gray-600">발송 가능(이메일·인스타 중 하나 이상) <b className="text-gray-900">{channelStats.email_or_instagram}</b>곳</span>
+            {channelStats.none > 0 && (
+              <span className="text-gray-400">연락처 없음 {channelStats.none}곳</span>
+            )}
+          </div>
+        </div>
+      )}
+
       {showActions && (
-        <div className="mb-4 flex justify-between items-center">
+        <div className="mb-4 flex justify-between items-center gap-3">
           <div>
             {projectId && <ExportButton projectId={projectId} />}
           </div>
           {onApproveAll && (
-            <button
-              onClick={onApproveAll}
-              className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors cursor-pointer"
-            >
-              전체 승인
-            </button>
+            <div className="flex items-center gap-2">
+              <span className="hidden sm:inline text-xs text-gray-400">
+                승인한 업체만 발송 대상이 됩니다
+              </span>
+              <button
+                onClick={onApproveAll}
+                className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors cursor-pointer"
+              >
+                수집된 업체 전체 승인
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -67,11 +93,16 @@ export default function ProspectTable({
                 <th className="text-left px-4 py-3 font-medium text-gray-600">이메일</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">전화번호</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">인스타그램</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">소스</th>
-                <th className="text-center px-4 py-3 font-medium text-gray-600">스코어</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600">수집 경로</th>
+                <th
+                  className="text-center px-4 py-3 font-medium text-gray-600"
+                  title="이 업체가 영업 메일에 얼마나 반응해왔는지 (열람·클릭·답장 이력 기반, 0~100). 높을수록 답장 확률이 높습니다."
+                >
+                  반응 점수 ⓘ
+                </th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">상태</th>
                 {showActions && (
-                  <th className="text-center px-4 py-3 font-medium text-gray-600">작업</th>
+                  <th className="text-center px-4 py-3 font-medium text-gray-600">승인/제외</th>
                 )}
               </tr>
             </thead>
@@ -92,7 +123,26 @@ export default function ProspectTable({
                       onClick={() => setSelectedProspect(p)}
                     >
                       <td className="px-4 py-3 font-medium text-gray-900">
-                        {p.name}
+                        <div className="flex items-center gap-1.5">
+                          {p.name}
+                          {p.website && (
+                            <a
+                              href={p.website}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              title={p.website}
+                              className="text-gray-400 hover:text-blue-600"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          )}
+                        </div>
+                        {p.description && (
+                          <p className="mt-0.5 text-xs font-normal text-gray-500 truncate max-w-[16rem]" title={p.description}>
+                            {p.description}
+                          </p>
+                        )}
                         {p.tags && p.tags.length > 0 && (
                           <div className="flex gap-1 mt-1">
                             {p.tags.slice(0, 3).map((t) => (
@@ -127,6 +177,11 @@ export default function ProspectTable({
                         ) : (
                           <span className="text-gray-400">-</span>
                         )}
+                        {p.keyword && (
+                          <p className="mt-0.5 text-xs text-gray-400" title="이 키워드로 검색해서 찾았습니다">
+                            "{p.keyword}"
+                          </p>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-center">
                         <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${getScoreColor(p.score || 0)}`}>
@@ -145,7 +200,7 @@ export default function ProspectTable({
                               <button
                                 onClick={() => onApprove(p.id)}
                                 className="p-1.5 text-green-600 hover:bg-green-50 rounded transition-colors cursor-pointer"
-                                title="승인"
+                                title="발송 대상으로 승인"
                               >
                                 <Check className="w-4 h-4" />
                               </button>
@@ -154,7 +209,7 @@ export default function ProspectTable({
                               <button
                                 onClick={() => onReject(p.id)}
                                 className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer"
-                                title="거절"
+                                title="발송 대상에서 제외"
                               >
                                 <X className="w-4 h-4" />
                               </button>

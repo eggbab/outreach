@@ -133,6 +133,17 @@ function KeywordsTab({ projectId, showToast }) {
   const [newKeyword, setNewKeyword] = useState('')
   const [maxResults, setMaxResults] = useState(20)
   const [matchLevel, setMatchLevel] = useState('medium')
+  // 수집에 사용할 채널 — 기본은 전부 켬
+  const ALL_SOURCES = [
+    { key: 'kakao', label: '카카오 지도', desc: '공식 API — 차단 위험 없음, 가장 안정적' },
+    { key: 'naver', label: '네이버 검색', desc: '웹 검색 결과에서 홈페이지 방문해 수집' },
+    { key: 'naver_shopping', label: '네이버 쇼핑', desc: '쇼핑몰 판매 업체' },
+    { key: 'naver_map', label: '네이버 지도', desc: '지역 매장 — 전화번호에 강함' },
+    { key: 'google', label: '구글 검색', desc: '네이버에 없는 업체 보완' },
+  ]
+  const [selectedSources, setSelectedSources] = useState(ALL_SOURCES.map(s => s.key))
+  const toggleSource = (key) => setSelectedSources(prev =>
+    prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key])
   const [collecting, setCollecting] = useState(false)
   const [progress, setProgress] = useState(null)
   const [usage, setUsage] = useState(null)
@@ -181,7 +192,11 @@ function KeywordsTab({ projectId, showToast }) {
     setCollecting(true)
     setProgress({ status: 'running', current: 0, total: 0, message: '수집 시작 중...' })
     try {
-      await api.post(`/projects/${projectId}/collect`, { max_results: maxResults, match_level: matchLevel })
+      await api.post(`/projects/${projectId}/collect`, {
+        max_results: maxResults,
+        match_level: matchLevel,
+        sources: selectedSources.length === ALL_SOURCES.length ? null : selectedSources,
+      })
       progressInterval.current = setInterval(async () => {
         try {
           const res = await api.get(`/projects/${projectId}/collect/status`)
@@ -301,7 +316,7 @@ function KeywordsTab({ projectId, showToast }) {
           <h3 className="text-sm font-semibold text-gray-900">업체 수집</h3>
           <button
             onClick={startCollection}
-            disabled={collecting}
+            disabled={collecting || selectedSources.length === 0}
             className="inline-flex items-center gap-2 px-5 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             {collecting ? (
@@ -328,6 +343,36 @@ function KeywordsTab({ projectId, showToast }) {
               ))}
             </div>
           </div>
+        </div>
+
+        {/* 수집 채널 선택 */}
+        <div className="mb-5">
+          <div className="text-xs font-medium text-gray-700 mb-2">
+            어디서 가져올까요? <span className="text-gray-400 font-normal">(누르면 켜고 끔)</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {ALL_SOURCES.map(src => {
+              const on = selectedSources.includes(src.key)
+              return (
+                <button
+                  key={src.key}
+                  onClick={() => toggleSource(src.key)}
+                  className={`text-left p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                    on ? 'border-green-600 bg-green-50' : 'border-gray-200 bg-white opacity-60 hover:opacity-100'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className={`text-sm font-semibold ${on ? 'text-green-700' : 'text-gray-500'}`}>{src.label}</span>
+                    <span className={`text-xs font-medium ${on ? 'text-green-600' : 'text-gray-400'}`}>{on ? '사용' : '꺼짐'}</span>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-0.5">{src.desc}</div>
+                </button>
+              )
+            })}
+          </div>
+          {selectedSources.length === 0 && (
+            <p className="mt-2 text-xs text-red-600">최소 한 곳은 선택해야 수집할 수 있습니다.</p>
+          )}
         </div>
 
         {/* 정밀도 */}
@@ -394,6 +439,15 @@ function KeywordsTab({ projectId, showToast }) {
               </span>
             )}
           </div>
+          {progress.source_stats && Object.keys(progress.source_stats).length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {Object.entries(progress.source_stats).map(([k, v]) => (
+                <span key={k} className="text-xs px-2 py-0.5 rounded-full bg-white/70 border border-gray-200 text-gray-600">
+                  {({kakao:'카카오 지도',naver:'네이버 검색',naver_shopping:'네이버 쇼핑',naver_map:'네이버 지도',google:'구글'})[k] || k} {v}건
+                </span>
+              ))}
+            </div>
+          )}
           {progress.total > 0 && (
             <div className="mb-2">
               <div className="flex justify-between text-xs text-gray-500 mb-1">
@@ -424,6 +478,8 @@ function KeywordsTab({ projectId, showToast }) {
 
 function ProspectsTab({ projectId, showToast }) {
   const [prospects, setProspects] = useState([])
+  const [channelStats, setChannelStats] = useState(null)
+  const [totalCount, setTotalCount] = useState(0)
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(true)
@@ -434,6 +490,8 @@ function ProspectsTab({ projectId, showToast }) {
       const res = await api.get(`/projects/${projectId}/prospects`, { params: { page: p, per_page: 20 } })
       setProspects(res.data.items)
       setTotalPages(res.data.total_pages)
+      setChannelStats(res.data.channel_stats || null)
+      setTotalCount(res.data.total || 0)
       setPage(p)
     } catch {
       showToast('데이터 로드 실패', 'error')
@@ -518,6 +576,8 @@ function ProspectsTab({ projectId, showToast }) {
       </div>
       <ProspectTable
         prospects={prospects}
+        channelStats={channelStats}
+        total={totalCount}
         page={page}
         totalPages={totalPages}
         onPageChange={fetchProspects}
@@ -533,6 +593,7 @@ function ProspectsTab({ projectId, showToast }) {
 
 function EmailTab({ projectId, showToast }) {
   const [prospects, setProspects] = useState([])
+  const [approvedStats, setApprovedStats] = useState(null)  // 승인 대상 채널 집계
   const [sending, setSending] = useState(false)
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(true)
@@ -541,8 +602,15 @@ function EmailTab({ projectId, showToast }) {
   const [scheduleAt, setScheduleAt] = useState('')
 
   useEffect(() => {
-    api.get(`/projects/${projectId}/prospects`, { params: { status: 'approved', has_email: true, per_page: 100 } })
-      .then((res) => setProspects(res.data.items || res.data))
+    // 목록(이메일 보유만)과 집계(승인 전체)는 기준이 달라 따로 불러온다
+    Promise.all([
+      api.get(`/projects/${projectId}/prospects`, { params: { status: 'approved', has_email: true, per_page: 100 } }),
+      api.get(`/projects/${projectId}/prospects`, { params: { status: 'approved', page_size: 1 } }),
+    ])
+      .then(([listRes, statsRes]) => {
+        setProspects(listRes.data.items || listRes.data)
+        setApprovedStats(statsRes.data.channel_stats || null)
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [projectId])
@@ -605,6 +673,30 @@ function EmailTab({ projectId, showToast }) {
                   <div dangerouslySetInnerHTML={{ __html: previewData.html_body }} />
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 발송 계획 — 승인 대상이 채널별로 몇 건인지, 각각 어디서 보내는지 */}
+      {approvedStats && (
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">발송 계획 (승인된 업체 기준)</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="rounded-lg bg-blue-50 border border-blue-100 p-3">
+              <p className="text-xs text-blue-700 font-medium">📧 이메일로 발송</p>
+              <p className="text-xl font-bold text-blue-700 tabular-nums">{approvedStats.email}건</p>
+              <p className="text-xs text-gray-500 mt-1">아래 '발송 시작' 버튼으로 지금 보냅니다</p>
+            </div>
+            <div className="rounded-lg bg-pink-50 border border-pink-100 p-3">
+              <p className="text-xs text-pink-700 font-medium">📷 인스타 DM으로 발송</p>
+              <p className="text-xl font-bold text-pink-700 tabular-nums">{approvedStats.instagram}건</p>
+              <p className="text-xs text-gray-500 mt-1">'인스타 DM' 탭에서 크롬 확장으로 보냅니다</p>
+            </div>
+            <div className="rounded-lg bg-gray-50 border border-gray-200 p-3">
+              <p className="text-xs text-gray-600 font-medium">두 채널 합계 (중복 제외)</p>
+              <p className="text-xl font-bold text-gray-800 tabular-nums">{approvedStats.email_or_instagram}건</p>
+              <p className="text-xs text-gray-500 mt-1">이메일이 있으면 이메일, 없으면 DM으로 나눠 보내면 전부 커버됩니다</p>
             </div>
           </div>
         </div>

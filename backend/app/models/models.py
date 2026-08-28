@@ -116,6 +116,8 @@ class Prospect(Base):
     website = Column(String(500), nullable=True)
     source = Column(String(50), nullable=True)
     category = Column(String(100), nullable=True)
+    # 업체 요약 — 검색 결과에 딸려온 소개문/주소 등. 발송 전 대상 파악용.
+    description = Column(Text, nullable=True)
     # Phase 2: score
     score = Column(Integer, default=0, nullable=False)
     # Phase 6: global prospect + keyword linkage
@@ -212,6 +214,8 @@ class CollectionJob(Base):
     processed_tasks = Column(Integer, default=0)
     prospects_found = Column(Integer, default=0)
     current_task = Column(String(300), nullable=True)
+    # 소스별 수집 건수 JSON — 예: {"naver_map": 12, "kakao": 5}. 수집 경위 표시용.
+    source_stats = Column(Text, nullable=True)
     error = Column(Text, nullable=True)
     started_at = Column(DateTime, default=utcnow, nullable=False)
     completed_at = Column(DateTime, nullable=True)
