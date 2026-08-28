@@ -134,9 +134,9 @@ export default function PricingPage() {
         </div>
         <div className="grid grid-cols-3 gap-3">
           {[
-            { icon: Search, label: '수집', cost: '1cr/건' },
-            { icon: Mail, label: '이메일', cost: '2cr/건' },
-            { icon: MessageCircle, label: 'DM', cost: '3cr/건' },
+            { icon: Search, label: '수집', cost: '1크레딧/건' },
+            { icon: Mail, label: '이메일', cost: '2크레딧/건' },
+            { icon: MessageCircle, label: 'DM', cost: '3크레딧/건' },
           ].map((item) => (
             <div key={item.label} className="bg-white/5 rounded-lg p-3 text-center">
               <item.icon className="w-4 h-4 text-gray-400 mx-auto mb-1" />
@@ -387,7 +387,7 @@ export default function PricingPage() {
               <div>
                 <div className="flex items-center gap-2 mb-0.5">
                   <span className="text-sm font-medium text-gray-900">{item.action}</span>
-                  <span className="text-xs font-semibold text-blue-600">{item.cost}cr</span>
+                  <span className="text-xs font-semibold text-blue-600">{item.cost}크레딧</span>
                 </div>
                 <p className="text-xs text-gray-500">{item.desc}</p>
                 <p className="text-[10px] text-gray-400">{item.sub}</p>

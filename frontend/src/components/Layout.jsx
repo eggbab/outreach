@@ -67,31 +67,15 @@ export default function Layout({ children }) {
           </>
         )}
 
+        {/* 순서 = 실제 업무 흐름. 매일 여는 것(대시보드·수집·발송)이 위,
+            어쩌다 여는 것(팀·API·크롬확장)이 아래. */}
         <NavLink to="/dashboard" end className={navLinkClass} onClick={closeMobile}>
           <LayoutDashboard className="w-5 h-5" />
           대시보드
         </NavLink>
-
-        <p className={navSectionClass}>영업</p>
-        <NavLink to="/pipeline" data-onboarding="nav-pipeline" className={navLinkClass} onClick={closeMobile}>
-          <Kanban className="w-5 h-5" />
-          파이프라인
-        </NavLink>
-        <NavLink to="/tasks" className={navLinkClass} onClick={closeMobile}>
-          <CheckSquare className="w-5 h-5" />
-          할 일
-        </NavLink>
-        <NavLink to="/calls" className={navLinkClass} onClick={closeMobile}>
-          <Phone className="w-5 h-5" />
-          통화 기록
-        </NavLink>
-        <NavLink to="/proposals" className={navLinkClass} onClick={closeMobile}>
-          <FileCheck className="w-5 h-5" />
-          제안서
-        </NavLink>
-        <NavLink to="/meetings" className={navLinkClass} onClick={closeMobile}>
-          <Calendar className="w-5 h-5" />
-          미팅
+        <NavLink to="/discover" className={navLinkClass} onClick={closeMobile}>
+          <Search className="w-5 h-5" />
+          잠재고객 DB
         </NavLink>
 
         <p className={navSectionClass}>발송</p>
@@ -103,22 +87,52 @@ export default function Layout({ children }) {
           <FileText className="w-5 h-5" />
           템플릿
         </NavLink>
-
-        <p className={navSectionClass}>데이터</p>
-        <NavLink to="/discover" className={navLinkClass} onClick={closeMobile}>
-          <Search className="w-5 h-5" />
-          잠재고객 DB
-        </NavLink>
         <NavLink to="/analytics" className={navLinkClass} onClick={closeMobile}>
           <BarChart3 className="w-5 h-5" />
           분석
         </NavLink>
+
+        <p className={navSectionClass}>영업 관리</p>
+        <NavLink to="/pipeline" data-onboarding="nav-pipeline" className={navLinkClass} onClick={closeMobile}>
+          <Kanban className="w-5 h-5" />
+          파이프라인
+        </NavLink>
+        <NavLink to="/tasks" className={navLinkClass} onClick={closeMobile}>
+          <CheckSquare className="w-5 h-5" />
+          할 일
+        </NavLink>
+        <NavLink to="/meetings" className={navLinkClass} onClick={closeMobile}>
+          <Calendar className="w-5 h-5" />
+          미팅
+        </NavLink>
+        <NavLink to="/proposals" className={navLinkClass} onClick={closeMobile}>
+          <FileCheck className="w-5 h-5" />
+          제안서
+        </NavLink>
+        <NavLink to="/calls" className={navLinkClass} onClick={closeMobile}>
+          <Phone className="w-5 h-5" />
+          통화 기록
+        </NavLink>
+
+        <p className={navSectionClass}>계정</p>
+        <NavLink to="/pricing" className={navLinkClass} onClick={closeMobile}>
+          <CreditCard className="w-5 h-5" />
+          크레딧 충전
+        </NavLink>
+        <NavLink to="/settings" data-onboarding="nav-settings" className={navLinkClass} onClick={closeMobile}>
+          <Settings className="w-5 h-5" />
+          설정
+        </NavLink>
+
+        <p className={navSectionClass}>기타</p>
         <NavLink to="/blacklist" className={navLinkClass} onClick={closeMobile}>
           <ShieldX className="w-5 h-5" />
           블랙리스트
         </NavLink>
-
-        <p className={navSectionClass}>설정</p>
+        <NavLink to="/extension" className={navLinkClass} onClick={closeMobile}>
+          <Chrome className="w-5 h-5" />
+          크롬 확장 설치
+        </NavLink>
         <NavLink to="/teams" className={navLinkClass} onClick={closeMobile}>
           <Users className="w-5 h-5" />
           팀
@@ -126,18 +140,6 @@ export default function Layout({ children }) {
         <NavLink to="/api-keys" className={navLinkClass} onClick={closeMobile}>
           <Key className="w-5 h-5" />
           API Keys
-        </NavLink>
-        <NavLink to="/pricing" className={navLinkClass} onClick={closeMobile}>
-          <CreditCard className="w-5 h-5" />
-          요금제
-        </NavLink>
-        <NavLink to="/extension" className={navLinkClass} onClick={closeMobile}>
-          <Chrome className="w-5 h-5" />
-          크롬 확장 설치
-        </NavLink>
-        <NavLink to="/settings" data-onboarding="nav-settings" className={navLinkClass} onClick={closeMobile}>
-          <Settings className="w-5 h-5" />
-          설정
         </NavLink>
       </nav>
 

@@ -113,7 +113,7 @@ export default function LandingPage() {
             {[
               { value: 5, suffix: '개', label: '수집 소스' },
               { value: 3, suffix: '채널', label: '발송 채널' },
-              { value: 30, suffix: 'cr', label: '가입 무료 크레딧' },
+              { value: 30, suffix: '크레딧', label: '가입 시 무료 지급' },
               { value: 0, suffix: '원', label: '월 구독료' },
             ].map((m, i) => (
               <RevealSection key={m.label} delay={i * 150}>
@@ -504,7 +504,7 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
               { label: '수집 채널 (카카오·네이버·구글)', value: 5, suffix: '개' },
-              { label: '가입 시 무료 크레딧', value: 30, suffix: 'cr' },
+              { label: '가입 시 무료 지급', value: 30, suffix: '크레딧' },
               { label: '월 구독료', prefix: '₩', value: 0, suffix: '' },
             ].map((item, i) => (
               <RevealSection key={item.label} delay={i * 150}>

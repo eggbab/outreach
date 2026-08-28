@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import api from '../lib/api'
 import {
   FolderOpen,
@@ -18,6 +18,7 @@ import {
 
 export default function DashboardPage() {
   const navigate = useNavigate()
+  const [account, setAccount] = useState(null)  // 크레딧 잔액 + 서비스 키
   const [stats, setStats] = useState({
     total_projects: 0,
     total_prospects: 0,
@@ -42,12 +43,14 @@ export default function DashboardPage() {
 
   const fetchData = async () => {
     try {
-      const [statsRes, projectsRes] = await Promise.all([
+      const [statsRes, projectsRes, subRes] = await Promise.all([
         api.get('/dashboard/stats'),
         api.get('/projects/'),
+        api.get('/subscription/').catch(() => null),
       ])
       setStats(statsRes.data)
       setProjects(Array.isArray(projectsRes.data) ? projectsRes.data : [])
+      if (subRes) setAccount(subRes.data)
     } catch (err) {
       console.error('Failed to fetch dashboard data:', err)
     } finally {
@@ -145,6 +148,40 @@ export default function DashboardPage() {
         <h1 className="text-2xl font-bold text-gray-900">대시보드</h1>
         <p className="text-gray-500 mt-1">영업 자동화 현황을 한눈에 확인하세요.</p>
       </div>
+
+      {/* 내 계정 — 잔액과 서비스 키를 맨 위에서 바로 보이게 */}
+      {account && (
+        <div className="mb-6 bg-white rounded-xl border border-gray-200 p-5 flex flex-wrap items-center gap-x-8 gap-y-3">
+          <div>
+            <p className="text-xs text-gray-500 mb-0.5">보유 크레딧</p>
+            <p className="text-2xl font-bold text-blue-600 tabular-nums">
+              {(account.credits || 0).toLocaleString('ko-KR')}
+              <span className="ml-1 text-sm font-medium text-gray-400">크레딧</span>
+            </p>
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs text-gray-500 mb-0.5">사용 중인 서비스 키</p>
+            {account.service_key ? (
+              <p className="font-mono text-sm text-gray-800 truncate">
+                {account.service_key.slice(0, 16)}…
+                {account.service_key_memo && (
+                  <span className="ml-2 font-sans text-xs text-gray-400">({account.service_key_memo})</span>
+                )}
+              </p>
+            ) : (
+              <Link to="/settings" className="text-sm text-blue-600 hover:underline">
+                등록된 키 없음 — 설정에서 등록하기
+              </Link>
+            )}
+          </div>
+          <Link
+            to="/pricing"
+            className="ml-auto px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
+          >
+            크레딧 충전
+          </Link>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">

@@ -139,6 +139,8 @@ class AdminUserSummary(BaseModel):
     created_at: datetime
     project_count: int = 0
     total_emails_sent: int = 0
+    service_key: Optional[str] = None        # 이 사용자가 등록한 서비스 키
+    service_key_memo: Optional[str] = None   # 발급 당시 메모(주문번호 등)
     last_active: Optional[datetime] = None
 
 
@@ -213,6 +215,15 @@ def list_users(
         .all()
     )
 
+    # 서비스 키는 한 번에 모아 읽는다 (사용자마다 조회하면 쿼리가 배로 늘어난다)
+    key_ids = [u.service_key_id for u in users if u.service_key_id]
+    key_by_id = {}
+    if key_ids:
+        key_by_id = {
+            sk.id: sk
+            for sk in db.query(ServiceKey).filter(ServiceKey.id.in_(key_ids)).all()
+        }
+
     items = []
     for u in users:
         proj_count = db.query(func.count(Project.id)).filter(Project.user_id == u.id).scalar() or 0
@@ -226,11 +237,14 @@ def list_users(
             .filter(EmailLog.user_id == u.id)
             .scalar()
         )
+        sk = key_by_id.get(u.service_key_id) if u.service_key_id else None
         items.append(AdminUserSummary(
             id=u.id, email=u.email, name=u.name, plan=u.plan,
             is_admin=u.is_admin, is_active=u.is_active, credits=u.credits,
             created_at=u.created_at, project_count=proj_count,
             total_emails_sent=emails, last_active=last_email,
+            service_key=sk.key if sk else None,
+            service_key_memo=sk.memo if sk else None,
         ))
 
     return AdminUserListResponse(
@@ -259,11 +273,15 @@ def get_user_detail(
         .filter(EmailLog.user_id == u.id)
         .scalar()
     )
+    sk = (db.query(ServiceKey).filter(ServiceKey.id == u.service_key_id).first()
+          if u.service_key_id else None)
     return AdminUserSummary(
         id=u.id, email=u.email, name=u.name, plan=u.plan,
         is_admin=u.is_admin, is_active=u.is_active, credits=u.credits,
         created_at=u.created_at, project_count=proj_count,
         total_emails_sent=emails, last_active=last_email,
+        service_key=sk.key if sk else None,
+        service_key_memo=sk.memo if sk else None,
     )
 
 

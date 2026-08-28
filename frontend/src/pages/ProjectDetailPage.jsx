@@ -276,7 +276,7 @@ function KeywordsTab({ projectId, showToast }) {
               <div key={item.label} className="text-center">
                 <p className="text-xs text-gray-500">{item.label}</p>
                 <p className="text-lg font-bold text-gray-900">{item.used}</p>
-                <p className="text-[10px] text-gray-400">{item.cost}cr/건</p>
+                <p className="text-[10px] text-gray-400">{item.cost}크레딧/건</p>
               </div>
             ))}
           </div>

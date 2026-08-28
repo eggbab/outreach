@@ -308,7 +308,7 @@ function PaymentRequestsTab() {
                     <div className="font-medium text-gray-900">{it.user_name}</div>
                     <div className="text-xs text-gray-500">{it.user_email}</div>
                   </td>
-                  <td className="px-4 py-3 text-gray-700">{it.package_label}<br/><span className="text-xs text-gray-500">{it.credits.toLocaleString()}cr</span></td>
+                  <td className="px-4 py-3 text-gray-700">{it.package_label}<br/><span className="text-xs text-gray-500">{it.credits.toLocaleString()}크레딧</span></td>
                   <td className="px-4 py-3 font-bold text-gray-900">{it.amount.toLocaleString()}원</td>
                   <td className="px-4 py-3 text-gray-900">{it.depositor_name}</td>
                   <td className="px-4 py-3 text-xs text-gray-500 max-w-[200px] truncate">{it.memo || '-'}</td>
@@ -472,6 +472,7 @@ function UsersTab() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">사용자</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">플랜</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">크레딧</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">서비스 키</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">프로젝트</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">발송</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">상태</th>
@@ -490,7 +491,19 @@ function UsersTab() {
                       <div className="text-xs text-gray-500">{u.email}</div>
                     </td>
                     <td className="px-4 py-3 text-gray-700">{u.plan}</td>
-                    <td className="px-4 py-3 font-medium text-gray-900">{u.credits.toLocaleString('ko-KR')}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900 tabular-nums">{u.credits.toLocaleString('ko-KR')}</td>
+                    <td className="px-4 py-3">
+                      {u.service_key ? (
+                        <div>
+                          <code className="text-xs text-gray-700">{u.service_key.slice(0, 12)}…</code>
+                          {u.service_key_memo && (
+                            <div className="text-xs text-gray-400">{u.service_key_memo}</div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-300">없음</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-gray-600">{u.project_count}</td>
                     <td className="px-4 py-3 text-gray-600">{u.total_emails_sent.toLocaleString('ko-KR')}</td>
                     <td className="px-4 py-3">
@@ -780,7 +793,7 @@ function KeysTab() {
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              {v.toLocaleString()}cr
+              {v.toLocaleString()}
             </button>
           ))}
         </div>
@@ -821,7 +834,7 @@ function KeysTab() {
                     </td>
                     <td className="px-4 py-3 text-gray-600">{k.memo || '-'}</td>
                     <td className="px-4 py-3 font-medium text-gray-900 tabular-nums">
-                      {(k.credits || 0).toLocaleString()}cr
+                      {(k.credits || 0).toLocaleString()}크레딧
                     </td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${

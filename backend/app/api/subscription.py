@@ -25,6 +25,8 @@ class SubscriptionResponse(BaseModel):
     current_period_end: datetime | None = None
     cancel_at_period_end: bool = False
     trial_ends_at: datetime | None = None
+    service_key: str | None = None        # 현재 등록해 쓰고 있는 키
+    service_key_memo: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -59,6 +61,9 @@ def get_subscription(
     current_user: User = Depends(get_current_user),
 ):
     sub = db.query(Subscription).filter(Subscription.user_id == current_user.id).first()
+    from app.models.models import ServiceKey
+    sk = (db.query(ServiceKey).filter(ServiceKey.id == current_user.service_key_id).first()
+          if current_user.service_key_id else None)
     return SubscriptionResponse(
         plan=sub.plan if sub else current_user.plan,
         status=sub.status if sub else "active",
@@ -67,6 +72,8 @@ def get_subscription(
         current_period_end=sub.current_period_end if sub else None,
         cancel_at_period_end=sub.cancel_at_period_end if sub else False,
         trial_ends_at=current_user.trial_ends_at,
+        service_key=sk.key if sk else None,
+        service_key_memo=sk.memo if sk else None,
     )
 
 
