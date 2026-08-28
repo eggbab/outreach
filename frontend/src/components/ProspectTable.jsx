@@ -17,6 +17,7 @@ const sourceConfig = {
   naver_shopping: { label: '네이버 쇼핑', color: 'bg-green-100 text-green-700' },
   naver_map: { label: '네이버 지도', color: 'bg-green-100 text-green-700' },
   kakao: { label: '카카오 지도', color: 'bg-yellow-100 text-yellow-700' },
+  ftc: { label: '정부 등록부', color: 'bg-indigo-100 text-indigo-700' },
   google: { label: '구글', color: 'bg-blue-100 text-blue-700' },
   instagram: { label: '인스타그램', color: 'bg-pink-100 text-pink-700' },
 }

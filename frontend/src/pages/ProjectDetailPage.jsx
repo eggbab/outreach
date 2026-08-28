@@ -136,6 +136,7 @@ function KeywordsTab({ projectId, showToast }) {
   // 수집에 사용할 채널 — 기본은 전부 켬
   const ALL_SOURCES = [
     { key: 'kakao', label: '카카오 지도', desc: '공식 API — 차단 위험 없음, 가장 안정적' },
+    { key: 'ftc', label: '정부 등록부 (통신판매)', desc: '공정위 신고 정보 — 이메일·전화가 정부 공개 데이터 (온라인 판매 업체)' },
     { key: 'naver', label: '네이버 검색', desc: '웹 검색 결과에서 홈페이지 방문해 수집' },
     { key: 'naver_shopping', label: '네이버 쇼핑', desc: '쇼핑몰 판매 업체' },
     { key: 'naver_map', label: '네이버 지도', desc: '지역 매장 — 전화번호에 강함' },
@@ -363,7 +364,7 @@ function KeywordsTab({ projectId, showToast }) {
         {/* 수집 방식 안내 + 채널 선택은 고급 설정으로 */}
         <div className="mb-5">
           <div className="rounded-lg bg-blue-50 border border-blue-100 px-4 py-3 text-sm text-blue-800">
-            네이버(검색·쇼핑·지도)·카카오·구글을 <b>모두 검색</b>한 뒤, 같은 업체는
+            정부 등록부(통신판매 신고)·네이버(검색·쇼핑·지도)·카카오·구글을 <b>모두 검색</b>한 뒤, 같은 업체는
             <b> 하나로 합치고 서로 없는 정보(이메일↔전화)를 채워서</b> 제공합니다.
             두 곳 이상에서 확인된 업체는 <b>교차확인</b> 표시가 붙습니다.
           </div>
@@ -467,7 +468,7 @@ function KeywordsTab({ projectId, showToast }) {
             <div className="mb-2 flex flex-wrap gap-1.5">
               {Object.entries(progress.source_stats).map(([k, v]) => (
                 <span key={k} className="text-xs px-2 py-0.5 rounded-full bg-white/70 border border-gray-200 text-gray-600">
-                  {({kakao:'카카오 지도',naver:'네이버 검색',naver_shopping:'네이버 쇼핑',naver_map:'네이버 지도',google:'구글'})[k] || k} {v}건
+                  {({kakao:'카카오 지도',ftc:'정부 등록부',naver:'네이버 검색',naver_shopping:'네이버 쇼핑',naver_map:'네이버 지도',google:'구글'})[k] || k} {v}건
                 </span>
               ))}
             </div>

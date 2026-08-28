@@ -9,6 +9,7 @@ from app.models.models import (
     Blacklist, CollectionJob, GlobalProspect, GlobalProspectContribution,
     Keyword, Prospect,
 )
+from app.services.collector.ftc import search_ftc
 from app.services.collector.google import search_google
 from app.services.collector.kakao import search_kakao
 from app.services.collector.naver import search_naver, search_naver_map, search_naver_shopping
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 # 인스타그램 ID는 별도 수집 안 함 — 사이트 방문 시 인스타 링크 자동 추출됨.
 COLLECTION_PIPELINE = [
     ("kakao", search_kakao),
+    ("ftc", search_ftc),
     ("naver", search_naver),
     ("naver_shopping", search_naver_shopping),
     ("naver_map", search_naver_map),
