@@ -560,6 +560,7 @@ function KeysTab() {
   const [keys, setKeys] = useState([])
   const [loading, setLoading] = useState(true)
   const [memo, setMemo] = useState('')
+  const [credits, setCredits] = useState(10000)
   const [creating, setCreating] = useState(false)
   const [copied, setCopied] = useState(null)
 
@@ -577,8 +578,12 @@ function KeysTab() {
     e.preventDefault()
     setCreating(true)
     try {
-      await api.post('/admin/service-keys', { memo: memo || null })
+      await api.post('/admin/service-keys', {
+        memo: memo || null,
+        credits: Number(credits) || 0,
+      })
       setMemo('')
+      setCredits(10000)
       fetchKeys()
     } catch (err) { alert(err.response?.data?.detail || '생성 실패') }
     finally { setCreating(false) }
@@ -604,15 +609,32 @@ function KeysTab() {
   return (
     <>
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">새 서비스 키 생성</h3>
-        <form onSubmit={createKey} className="flex gap-3">
-          <input
-            type="text"
-            value={memo}
-            onChange={e => setMemo(e.target.value)}
-            placeholder="메모 (고객명 등)"
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
-          />
+        <h3 className="text-sm font-semibold text-gray-900 mb-1">새 서비스 키 생성</h3>
+        <p className="text-xs text-gray-500 mb-3">
+          외부(크몽 등)에서 결제받은 뒤 키를 전달하면, 고객이 등록하는 순간 아래 크레딧이 충전됩니다.
+        </p>
+        <form onSubmit={createKey} className="flex flex-wrap items-end gap-3">
+          <div className="flex-1 min-w-[14rem]">
+            <label className="block text-xs font-medium text-gray-600 mb-1">메모 (고객명·주문번호 등)</label>
+            <input
+              type="text"
+              value={memo}
+              onChange={e => setMemo(e.target.value)}
+              placeholder="예: 크몽 김철수 / 주문 12345"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            />
+          </div>
+          <div className="w-40">
+            <label className="block text-xs font-medium text-gray-600 mb-1">지급할 크레딧</label>
+            <input
+              type="number"
+              min="0"
+              step="100"
+              value={credits}
+              onChange={e => setCredits(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm tabular-nums"
+            />
+          </div>
           <button
             type="submit"
             disabled={creating}
@@ -622,6 +644,23 @@ function KeysTab() {
             {creating ? '생성 중...' : '키 생성'}
           </button>
         </form>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <span className="text-xs text-gray-500 py-1">자주 쓰는 값:</span>
+          {[1000, 10000, 30000, 70000, 100000].map(v => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setCredits(v)}
+              className={`px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer ${
+                Number(credits) === v
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {v.toLocaleString()}cr
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -639,6 +678,7 @@ function KeysTab() {
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">키</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">메모</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">크레딧</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">상태</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">사용자</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">생성일</th>
@@ -657,6 +697,9 @@ function KeysTab() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-gray-600">{k.memo || '-'}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900 tabular-nums">
+                      {(k.credits || 0).toLocaleString()}cr
+                    </td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
                         k.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'

@@ -16,7 +16,7 @@ from app.core.security import (
     verify_password,
 )
 from app.core.rate_limit import limiter
-from app.models.models import OnboardingProgress, ServiceKey, User, UserSettings
+from app.models.models import OnboardingProgress, ServiceKey, User, UserSettings, utcnow
 from app.api.pipeline import create_default_stages
 
 
@@ -88,7 +88,7 @@ def signup(request: Request, req: SignupRequest, db: Session = Depends(get_db)):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="이미 사용된 서비스 키입니다",
             )
-        if sk.expires_at and sk.expires_at < datetime.now(timezone.utc):
+        if sk.expires_at and sk.expires_at < utcnow():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="만료된 서비스 키입니다",
@@ -124,6 +124,11 @@ def signup(request: Request, req: SignupRequest, db: Session = Depends(get_db)):
     if sk:
         sk.activated_by_user_id = user.id
         sk.last_used_at = now
+        # 가입 시 키를 넣은 경우에도 키의 크레딧을 지급한다 (활성화 경로와 동일)
+        if int(sk.credits or 0) > 0:
+            from app.core.plans import add_credits
+            memo = f" — {sk.memo}" if sk.memo else ""
+            add_credits(db, user.id, int(sk.credits), f"서비스 키 등록{memo}", tx_type="purchase")
 
     # Create default settings for the user
     user_settings = UserSettings(user_id=user.id)
@@ -170,12 +175,12 @@ def login(request: Request, req: LoginRequest, db: Session = Depends(get_db)):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="서비스 키가 비활성화되었습니다. 관리자에게 문의하세요.",
             )
-        if sk.expires_at and sk.expires_at < datetime.now(timezone.utc):
+        if sk.expires_at and sk.expires_at < utcnow():
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="서비스 키가 만료되었습니다. 관리자에게 문의하세요.",
             )
-        sk.last_used_at = datetime.now(timezone.utc)
+        sk.last_used_at = utcnow()
         db.commit()
 
     token = create_access_token({"sub": str(user.id)})
@@ -194,6 +199,7 @@ class ActivateKeyRequest(BaseModel):
 class ActivateKeyResponse(BaseModel):
     message: str
     plan: str
+    credits_granted: int = 0
 
 
 # ──────────────────────────────────────
@@ -290,15 +296,31 @@ def activate_service_key(
         raise HTTPException(status_code=400, detail="비활성화된 서비스 키입니다")
     if sk.activated_by_user_id:
         raise HTTPException(status_code=400, detail="이미 사용된 서비스 키입니다")
-    if sk.expires_at and sk.expires_at < datetime.now(timezone.utc):
+    # DB 컬럼은 naive-UTC이므로 비교도 naive로 (aware와 섞으면 TypeError로 터진다)
+    now = utcnow()
+    if sk.expires_at and sk.expires_at < now:
         raise HTTPException(status_code=400, detail="만료된 서비스 키입니다")
 
-    now = datetime.now(timezone.utc)
     sk.activated_by_user_id = current_user.id
     sk.last_used_at = now
     current_user.service_key_id = sk.id
     current_user.plan = "pro"
     current_user.plan_changed_at = now
+
+    # 키에 담긴 크레딧을 실제로 지급한다. 이게 없으면 키를 받아도
+    # 잔액이 0이라 수집·발송이 전부 막힌다(예전 동작).
+    granted = int(sk.credits or 0)
+    if granted > 0:
+        from app.core.plans import add_credits
+        memo = f" — {sk.memo}" if sk.memo else ""
+        add_credits(db, current_user.id, granted,
+                    f"서비스 키 등록{memo}", tx_type="purchase")
+
     db.commit()
 
-    return ActivateKeyResponse(message="서비스 키가 등록되었습니다", plan="pro")
+    return ActivateKeyResponse(
+        message=(f"서비스 키가 등록되었습니다. {granted:,} 크레딧이 충전되었습니다."
+                 if granted > 0 else "서비스 키가 등록되었습니다"),
+        plan="pro",
+        credits_granted=granted,
+    )

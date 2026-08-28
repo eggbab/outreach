@@ -733,6 +733,9 @@ class ServiceKey(Base):
     id = Column(Integer, primary_key=True, index=True)
     key = Column(String(64), unique=True, nullable=False, index=True)
     memo = Column(String(200), nullable=True)
+    # 이 키를 등록하면 지급되는 크레딧. 외부 마켓(크몽 등)에서 결제받고
+    # 키만 전달하는 방식이라, 발급 시점에 수량을 박아둔다.
+    credits = Column(Integer, default=0, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     activated_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=utcnow)

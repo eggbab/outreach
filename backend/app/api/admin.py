@@ -36,6 +36,7 @@ def _require_admin(current_user: User = Depends(get_current_user)) -> User:
 
 class CreateKeyRequest(BaseModel):
     memo: Optional[str] = None
+    credits: int = 0          # 이 키로 지급할 크레딧
     expires_at: Optional[datetime] = None
 
 
@@ -43,6 +44,7 @@ class ServiceKeyResponse(BaseModel):
     id: int
     key: str
     memo: Optional[str] = None
+    credits: int = 0
     is_active: bool
     activated_by_user_id: Optional[int] = None
     activated_by_email: Optional[str] = None
@@ -59,8 +61,10 @@ def create_service_key(
     db: Session = Depends(get_db),
     admin: User = Depends(_require_admin),
 ):
+    if req.credits < 0:
+        raise HTTPException(status_code=400, detail="크레딧은 0 이상이어야 합니다")
     key = f"sk_{secrets.token_hex(24)}"
-    sk = ServiceKey(key=key, memo=req.memo, expires_at=req.expires_at)
+    sk = ServiceKey(key=key, memo=req.memo, credits=req.credits, expires_at=req.expires_at)
     db.add(sk)
     db.commit()
     db.refresh(sk)
@@ -111,7 +115,8 @@ def _key_to_response(sk: ServiceKey, db: Session) -> ServiceKeyResponse:
         if u:
             activated_email = u.email
     return ServiceKeyResponse(
-        id=sk.id, key=sk.key, memo=sk.memo, is_active=sk.is_active,
+        id=sk.id, key=sk.key, memo=sk.memo, credits=sk.credits or 0,
+        is_active=sk.is_active,
         activated_by_user_id=sk.activated_by_user_id,
         activated_by_email=activated_email,
         created_at=sk.created_at, expires_at=sk.expires_at,

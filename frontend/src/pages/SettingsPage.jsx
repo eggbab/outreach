@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../lib/api'
-import { useAuth } from '../lib/auth'
 import { Save, Loader2, Key, AlertTriangle, Shield, ShieldAlert } from 'lucide-react'
 import DeliverabilityChecker from '../components/DeliverabilityChecker'
 import DomainAuthCheck from '../components/DomainAuthCheck'
@@ -164,7 +163,6 @@ function SafetyGuide({ settings, onChange }) {
 }
 
 export default function SettingsPage() {
-  const { user } = useAuth()
   const [serviceKey, setServiceKey] = useState('')
   const [keyActivating, setKeyActivating] = useState(false)
   const [keyMessage, setKeyMessage] = useState(null)
@@ -241,14 +239,16 @@ export default function SettingsPage() {
       </div>
 
       <div className="space-y-6">
-        {/* Service Key */}
-        {user?.plan === 'free' && (
-          <div className="bg-white rounded-xl border border-blue-200 p-6">
+        {/* Service Key — 재구매 고객도 새 키를 넣어야 하므로 등급과 무관하게 항상 보여준다.
+            (예전엔 free 등급에만 노출돼서 두 번째 구매분을 등록할 방법이 없었다.) */}
+        <div className="bg-white rounded-xl border border-blue-200 p-6">
             <h2 className="text-base font-semibold text-gray-900 mb-1 flex items-center gap-2">
               <Key className="w-4 h-4 text-blue-600" />
               서비스 키 등록
             </h2>
-            <p className="text-sm text-gray-500 mb-4">서비스 키를 등록하면 Pro 플랜으로 업그레이드됩니다.</p>
+            <p className="text-sm text-gray-500 mb-4">
+              구매하고 받으신 서비스 키를 입력하면 크레딧이 바로 충전됩니다. 키 하나는 한 번만 쓸 수 있습니다.
+            </p>
             {keyMessage && (
               <div className={`mb-3 p-3 rounded-lg text-sm ${keyMessage.type === 'error' ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
                 {keyMessage.text}
@@ -271,7 +271,8 @@ export default function SettingsPage() {
                     const res = await api.post('/auth/activate-key', { service_key: serviceKey.trim() })
                     setKeyMessage({ type: 'success', text: res.data.message })
                     setServiceKey('')
-                    window.location.reload()
+                    // 충전 금액 안내를 읽을 시간을 준 뒤 새로고침(잔액 표시 갱신용)
+                    setTimeout(() => window.location.reload(), 2000)
                   } catch (err) {
                     setKeyMessage({ type: 'error', text: err.response?.data?.detail || '등록 실패' })
                   } finally {
@@ -284,8 +285,7 @@ export default function SettingsPage() {
                 {keyActivating ? '등록 중...' : '등록'}
               </button>
             </div>
-          </div>
-        )}
+        </div>
 
         {/* Gmail Settings */}
         <div data-onboarding="gmail-section" className="bg-white rounded-xl border border-gray-200 p-6">
