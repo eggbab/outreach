@@ -1,0 +1,20 @@
+# HTTPS 인증서 자동 발급·갱신 (Let's Encrypt). 설정할 것 없음 — 도메인만 맞으면 된다.
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:8000
+
+	# 크롬 확장이 서버로 요청할 때 필요한 실제 클라이언트 IP 전달
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 10mb
+			roll_keep 3
+		}
+	}
+}

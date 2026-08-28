@@ -122,6 +122,6 @@ class TestGetMe:
         data = response.json()
         assert data["email"] == "test@example.com"
         assert data["name"] == "Test User"
-        assert data["plan"] == "free"  # 신규 가입은 free + 50 크레딧 + 14일 트라이얼
+        assert data["plan"] == "free"  # 신규 가입은 free + 30 크레딧 + 14일 트라이얼
         assert "id" in data
         assert "created_at" in data

@@ -67,7 +67,8 @@ export default function OnboardingGuide() {
   const retriesRef = useRef(null)
 
   useEffect(() => {
-    api.get('/onboarding')
+    // 끝 슬래시를 붙여 307 리다이렉트를 피한다 (라우트가 '/'로 정의돼 있음)
+    api.get('/onboarding/')
       .then((r) => {
         if (!r.data.dismissed && !r.data.is_completed) setShow(true)
       })

@@ -1,0 +1,54 @@
+# 단일 서버(오라클 무료 VM 등) 배포용.
+#
+#   cd ~/outreach/deploy && docker compose -f docker-compose.prod.yml up -d --build
+#
+# 필요한 것: 이 폴더에 .env 파일 (DOMAIN 포함). deploy/.env.example 참고.
+# caddy가 443 포트를 받아 HTTPS 인증서를 자동 발급/갱신하고 app으로 넘긴다.
+# app은 외부에 포트를 열지 않는다 (caddy를 통해서만 접근).
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      - ENV=production
+    volumes:
+      - insta_sessions:/app/insta_sessions
+    expose:
+      - "8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 60s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }   # 디스크 채워서 서버 죽는 것 방지
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data          # 발급받은 인증서 — 지우면 재발급 (횟수 제한 있음)
+      - caddy_config:/config
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  insta_sessions:
+  caddy_data:
+  caddy_config:

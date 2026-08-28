@@ -107,7 +107,7 @@ export default function PrivacyPage() {
           <section>
             <h2 className="text-lg font-semibold text-gray-900 mt-6 mb-2">8. 개인정보 보호 책임자</h2>
             <p>이름: 김우진<br/>
-            연락처: <a href="mailto:weefree24@gmail.com" className="text-blue-600">weefree24@gmail.com</a></p>
+            연락처: <a href="mailto:gimuuuujin@gmail.com" className="text-blue-600">gimuuuujin@gmail.com</a></p>
             <p className="mt-3 text-sm text-gray-500">
               개인정보 침해에 대한 신고·상담이 필요하신 경우 아래 기관에 문의하실 수 있습니다.
             </p>

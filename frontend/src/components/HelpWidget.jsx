@@ -26,7 +26,7 @@ export default function HelpWidget() {
 
           <div className="p-2">
             <a
-              href="mailto:weefree24@gmail.com?subject=Outreach%20문의"
+              href="mailto:gimuuuujin@gmail.com?subject=Outreach%20문의"
               className="flex items-center gap-3 px-3 py-3 hover:bg-gray-50 rounded-lg cursor-pointer"
             >
               <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center">
@@ -34,7 +34,7 @@ export default function HelpWidget() {
               </div>
               <div className="flex-1">
                 <div className="text-sm font-medium text-gray-900">이메일 문의</div>
-                <div className="text-xs text-gray-500">weefree24@gmail.com</div>
+                <div className="text-xs text-gray-500">gimuuuujin@gmail.com</div>
               </div>
             </a>
 

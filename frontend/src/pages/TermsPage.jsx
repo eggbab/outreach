@@ -84,7 +84,7 @@ export default function TermsPage() {
           </section>
 
           <section className="mt-8 pt-6 border-t border-gray-200 text-xs text-gray-500">
-            <p>문의: <a href="mailto:support@your-domain.com" className="text-blue-600">support@your-domain.com</a></p>
+            <p>문의: <a href="mailto:gimuuuujin@gmail.com" className="text-blue-600">gimuuuujin@gmail.com</a></p>
           </section>
         </div>
       </div>

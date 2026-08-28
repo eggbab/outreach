@@ -78,7 +78,7 @@ cd frontend && npm run dev
   - 프론트 빌드 성공
 - **크레딧 모델 + 결제 (v4.0)**: ✅ 완료
   - 기간제 구독 → 크레딧 종량제 전환 (수집 1cr, 이메일 2cr, DM 3cr)
-  - 가입 시 50 크레딧 무료, 4종 충전 패키지 (7천원~15만원)
+  - 가입 시 30 크레딧 무료, 4종 충전 패키지 (7천원~15만원)
   - 토스페이먼츠 테스트 결제 연동
   - 발송 안전 시스템 (Gmail 워밍업 4주, 인스타 6주, 위험도 표시)
   - deep email extraction (5단계 탐색: 메인→링크→하위경로→footer→mailto)
@@ -117,6 +117,12 @@ cd frontend && npm run dev
   - **job_reaper 오살 수정**: 예약발송 실행 시 started_at 리셋 — 미래예약이 시작 즉시 90분기준에 걸려 failed 되던 것 방지
   - **스마트발송 KST**: best_hour를 KST 벽시계로 해석→UTC 변환 저장(스케줄러 비교 정합). 실검증: KST 10시=UTC 01시 예약 확인
   - 테스트 199개. 브라우저 E2E(할일 토글, 도메인인증 100점, 스마트발송 예약) 실동작 확인
+- **v5.9 실환경 E2E로 발견한 배포차단 버그 3건 (2026-08-28)**: Cloudflare 터널로 실제 HTTPS 공개 후 브라우저로 전 화면을 눌러보며 발견. 셋 다 **어느 호스팅에 올려도 터졌을** 버그.
+  - **P0 회원가입 전면 실패**: 기존 DB에 `users.is_admin` 등 컬럼 10개 누락 → signup 500. 원인은 `schema_sync._ADDED_COLUMNS`가 **손으로 적는 목록**이라 모델에 컬럼을 추가하고 목록에 적는 걸 잊으면 조용히 누락되던 것. → **모델 metadata와 DB를 비교해 자동 보정**하도록 변경(목록 폐지). NOT NULL은 기본값이 있을 때만 백필 후 부여. `Base.metadata`가 비어 있으면 예외(모델 import 누락 시 조용한 no-op 방지)
+  - **P0 HTTPS 뒤에서 앱 전체 먹통**: uvicorn이 `X-Forwarded-Proto`를 무시해(`--forwarded-allow-ips` 기본값이 127.0.0.1) 307 리다이렉트가 `http://`로 나가고 브라우저가 혼합 콘텐츠로 차단 → 프로젝트 생성·온보딩 등 실패. → Dockerfile CMD에 `--proxy-headers --forwarded-allow-ips *` 추가. 프론트의 `/onboarding` 호출도 끝 슬래시로 정정
+  - **P1 분석 화면 500**: PG enum `prospect_status`에 `replied` 누락(`subscription_plan.personal`도). enum 값 목록도 손으로 적던 것 → **모델 Enum에서 자동 감지**로 변경
+  - 회귀 테스트 `tests/test_schema_sync.py` 4건 추가(고의로 무력화해 실패 확인). 테스트 203개
+  - 배포 도구 추가: `deploy/docker-compose.prod.yml`(Caddy 자동 HTTPS + 로그 용량 제한), `deploy/setup-server.sh`(도커 설치·방화벽), `deploy/free-test.sh`(맥에서 0원으로 공개 테스트)
 - **알려진 미해결(감사 기록)**: A/B 승자 자동선택, TeamProject 접근제어 미연결(에이전시 공유 불가)·크레딧 풀링 없음(현단계 불필요 판단), IMAP 다유저 순차처리(대규모 시 스케일 이슈)
 - 아직 안 한 것: 실배포 실행, 계좌이체 외 PG, DM 답장추적(인스타), DmSendJob 서버측 기록
 
@@ -134,8 +140,9 @@ cd frontend && npm run dev
 - Supabase 연결 시 connection pooler 사용 (포트 6543, Transaction mode)
 - 수집/이메일 발송 상태는 DB(CollectionJob, EmailSendJob)에 저장
 - POST 라우트는 trailing slash 없이 호출 권장 (있으면 307 리다이렉트)
-- DB 스키마는 시작 시 `app/core/schema_sync.py`가 관리 (create_all + 신규 컬럼/enum 보정) — alembic 명령 사용 안 함
+- DB 스키마는 시작 시 `app/core/schema_sync.py`가 관리 — alembic 명령 사용 안 함. **모델 정의와 DB를 비교해 누락 컬럼·enum 값을 자동 보정**하므로, 모델에 컬럼/enum 값을 추가할 때 별도로 등록할 목록은 없다(손수 적던 방식은 v5.9에서 폐지)
 - 서버는 **단일 워커 필수** (APScheduler 인프로세스 — 워커 늘리면 시퀀스 중복 발송)
+- **HTTPS 앞단에 프록시(Caddy/Cloudflare/Render 등)를 두면 uvicorn에 `--proxy-headers --forwarded-allow-ips *` 필수** — 없으면 리다이렉트가 http로 나가 브라우저가 차단한다(Dockerfile에 반영됨)
 - SequenceEnrollment.status에 'stopped' 추가됨 (답장/수신거부로 자동 중단)
 
 ## DB 테이블
@@ -153,7 +160,7 @@ cd frontend && npm run dev
 ## 수익 모델
 - 크레딧 종량제 (월 구독 없음)
 - 크레딧 단가: 수집 1cr, 이메일 2cr, DM 3cr
-- 가입 시 50 크레딧 무료
+- 가입 시 30 크레딧 무료
 - 충전 패키지: 100cr(7,000원/70원), 300cr(19,500원/65원), 1,000cr(60,000원/60원), 3,000cr(150,000원/50원)
 - 결제: 토스페이먼츠 (테스트 키: test_gck_docs_...)
 
