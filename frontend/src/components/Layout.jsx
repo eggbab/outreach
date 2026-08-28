@@ -4,7 +4,7 @@ import { useAuth } from '../lib/auth'
 import {
   LayoutDashboard, Settings, LogOut, CreditCard,
   BarChart3, Mail, FileText, Kanban, Phone,
-  FileCheck, Calendar, Users, Key, Menu, X, Search, ShieldX, Chrome, CheckSquare,
+  FileCheck, Calendar, Users, Key, Menu, X, Search, ShieldX, Chrome, CheckSquare, Crown,
 } from 'lucide-react'
 import Logo from './Logo'
 import UsageBadge from './UsageBadge'
@@ -45,6 +45,28 @@ export default function Layout({ children }) {
       </div>
 
       <nav className="flex-1 p-4 space-y-0.5 overflow-y-auto">
+        {/* 사장님 전용 — 매출·입금승인·고객관리가 모여 있어 가장 자주 쓴다. 맨 위에 눈에 띄게 둔다. */}
+        {user?.is_admin && (
+          <>
+            <p className={navSectionClass}>관리자</p>
+            <NavLink
+              to="/admin"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'bg-amber-500 text-white'
+                    : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
+                }`
+              }
+              onClick={closeMobile}
+            >
+              <Crown className="w-5 h-5" />
+              관리자 대시보드
+            </NavLink>
+            <p className={navSectionClass}>메뉴</p>
+          </>
+        )}
+
         <NavLink to="/dashboard" end className={navLinkClass} onClick={closeMobile}>
           <LayoutDashboard className="w-5 h-5" />
           대시보드
@@ -95,16 +117,6 @@ export default function Layout({ children }) {
           <ShieldX className="w-5 h-5" />
           블랙리스트
         </NavLink>
-
-        {user?.is_admin && (
-          <>
-            <p className={navSectionClass}>관리자</p>
-            <NavLink to="/admin" className={navLinkClass} onClick={closeMobile}>
-              <Key className="w-5 h-5" />
-              서비스 키 관리
-            </NavLink>
-          </>
-        )}
 
         <p className={navSectionClass}>설정</p>
         <NavLink to="/teams" className={navLinkClass} onClick={closeMobile}>
