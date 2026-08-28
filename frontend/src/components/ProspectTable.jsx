@@ -171,8 +171,18 @@ export default function ProspectTable({
                       </td>
                       <td className="px-4 py-3">
                         {p.source ? (
-                          <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${sourceConfig[p.source]?.color || 'bg-gray-100 text-gray-600'}`}>
-                            {sourceConfig[p.source]?.label || p.source}
+                          <span className="inline-flex flex-wrap items-center gap-1">
+                            {p.source.split('+').map((srcKey) => (
+                              <span key={srcKey} className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${sourceConfig[srcKey]?.color || 'bg-gray-100 text-gray-600'}`}>
+                                {sourceConfig[srcKey]?.label || srcKey}
+                              </span>
+                            ))}
+                            {p.source.includes('+') && (
+                              <span
+                                className="inline-flex px-1.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700"
+                                title="두 곳 이상에서 같은 업체로 확인됨 — 정보 신뢰도가 높습니다"
+                              >✓ 교차확인</span>
+                            )}
                           </span>
                         ) : (
                           <span className="text-gray-400">-</span>

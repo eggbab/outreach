@@ -327,10 +327,10 @@ function KeywordsTab({ projectId, showToast }) {
           </button>
         </div>
 
-        {/* 키워드당 수집 수 */}
+        {/* 키워드당 수집 수 — 자주 쓰는 값 + 직접 입력 */}
         <div className="mb-5">
-          <div className="text-xs font-medium text-gray-700 mb-2">키워드당 수집 개수</div>
-          <div className="flex items-center gap-3">
+          <div className="text-xs font-medium text-gray-700 mb-2">키워드당 수집 개수 <span className="text-gray-400 font-normal">(1~200)</span></div>
+          <div className="flex flex-wrap items-center gap-3">
             <div className="flex gap-1.5">
               {[10, 20, 50, 100].map((n) => (
                 <button
@@ -342,14 +342,37 @@ function KeywordsTab({ projectId, showToast }) {
                 >{n}개</button>
               ))}
             </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-gray-400">직접 입력</span>
+              <input
+                type="number"
+                min="1"
+                max="200"
+                value={maxResults}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10)
+                  if (!Number.isNaN(v)) setMaxResults(Math.max(1, Math.min(200, v)))
+                }}
+                className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg text-sm tabular-nums"
+              />
+              <span className="text-xs text-gray-400">개</span>
+            </div>
           </div>
         </div>
 
-        {/* 수집 채널 선택 */}
+        {/* 수집 방식 안내 + 채널 선택은 고급 설정으로 */}
         <div className="mb-5">
-          <div className="text-xs font-medium text-gray-700 mb-2">
-            어디서 가져올까요? <span className="text-gray-400 font-normal">(누르면 켜고 끔)</span>
+          <div className="rounded-lg bg-blue-50 border border-blue-100 px-4 py-3 text-sm text-blue-800">
+            네이버(검색·쇼핑·지도)·카카오·구글을 <b>모두 검색</b>한 뒤, 같은 업체는
+            <b> 하나로 합치고 서로 없는 정보(이메일↔전화)를 채워서</b> 제공합니다.
+            두 곳 이상에서 확인된 업체는 <b>교차확인</b> 표시가 붙습니다.
           </div>
+        </div>
+        <details className="mb-5 group">
+          <summary className="text-xs font-medium text-gray-500 cursor-pointer hover:text-gray-700 select-none">
+            고급: 특정 채널만 사용하기 {selectedSources.length !== ALL_SOURCES.length && `(현재 ${selectedSources.length}개 채널만 사용 중)`}
+          </summary>
+          <div className="mt-2">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {ALL_SOURCES.map(src => {
               const on = selectedSources.includes(src.key)
@@ -373,7 +396,8 @@ function KeywordsTab({ projectId, showToast }) {
           {selectedSources.length === 0 && (
             <p className="mt-2 text-xs text-red-600">최소 한 곳은 선택해야 수집할 수 있습니다.</p>
           )}
-        </div>
+          </div>
+        </details>
 
         {/* 정밀도 */}
         <div className="mb-2">

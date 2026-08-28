@@ -62,6 +62,75 @@ def _classify_industry(category: str | None) -> str | None:
     return None
 
 
+def _norm_phone(v: str | None) -> str | None:
+    """전화번호를 숫자만 남겨 비교 가능하게."""
+    if not v:
+        return None
+    digits = "".join(ch for ch in v if ch.isdigit())
+    return digits or None
+
+
+def _norm_domain(url: str | None) -> str | None:
+    if not url:
+        return None
+    from urllib.parse import urlparse
+    try:
+        host = urlparse(url if "://" in url else f"http://{url}").netloc.lower()
+        return host.removeprefix("www.") or None
+    except Exception:
+        return None
+
+
+def merge_cross_source(raw: list[dict]) -> list[dict]:
+    """여러 소스에서 온 같은 업체를 하나로 합친다.
+
+    같은 업체 판정(강한 키): 이메일 / 인스타 핸들 / 전화번호(숫자만) / 웹사이트 도메인.
+    합칠 때 빈 필드를 서로 채우고, source는 "kakao+naver_map"처럼 이어붙인다.
+    두 곳 이상에서 확인된 업체는 그만큼 믿을 만하므로 verified_count로 표시.
+    """
+    merged: list[dict] = []
+    index: dict[tuple, int] = {}   # (키종류, 값) → merged 인덱스
+
+    def keys_of(d: dict):
+        if d.get("email"):
+            yield ("email", d["email"].lower())
+        if d.get("instagram"):
+            yield ("insta", d["instagram"].lower())
+        ph = _norm_phone(d.get("phone"))
+        if ph:
+            yield ("phone", ph)
+        dom = _norm_domain(d.get("website"))
+        if dom:
+            yield ("site", dom)
+
+    for d in raw:
+        hit = None
+        for k in keys_of(d):
+            if k in index:
+                hit = index[k]
+                break
+        if hit is None:
+            d = dict(d)
+            d["verified_count"] = 1
+            merged.append(d)
+            hit = len(merged) - 1
+        else:
+            m = merged[hit]
+            # 빈 필드 보완 — 앞서 온 소스(파이프라인 우선순위)가 우선
+            for f in ("email", "phone", "instagram", "website", "name", "category", "description"):
+                if not m.get(f) and d.get(f):
+                    m[f] = d[f]
+            src_a, src_b = m.get("source"), d.get("source")
+            if src_b and src_b not in (src_a or "").split("+"):
+                m["source"] = f"{src_a}+{src_b}" if src_a else src_b
+            m["verified_count"] = m.get("verified_count", 1) + 1
+        # 병합 후 생긴 키까지 전부 색인 (다음 소스가 다른 키로 만나도 찾도록)
+        for k in keys_of(merged[hit]):
+            index.setdefault(k, hit)
+
+    return merged
+
+
 class CollectionManager:
     """Orchestrates prospect collection across all configured sources."""
 
@@ -117,29 +186,38 @@ class CollectionManager:
             self.db.commit()
 
             try:
-                # 파이프라인 순서대로 실행, 목표량 채우면 중단 (중복 소스 호출 없음)
+                # 모든 소스를 끝까지 검색한 뒤 교차 병합한다.
+                # (예전엔 목표량을 채우면 중단 → 카카오가 먼저 채우면 이메일이 강한
+                #  웹 검색은 아예 안 돌아서 반쪽짜리 데이터가 쌓였다)
                 raw_prospects = []
                 source_counts: dict[str, int] = {}
-                # 사용자가 채널을 골랐으면 그것만 쓴다 (순서는 파이프라인 우선순위 유지)
                 pipeline = [
                     (k, f) for k, f in COLLECTION_PIPELINE
                     if not sources or k in sources
                 ]
                 for source_key, fn in pipeline:
-                    remaining = max_results - len(raw_prospects)
-                    if remaining <= 0:
-                        break
                     try:
                         job.current_task = f"{keyword_text} ({source_key})"
                         self.db.commit()
-                        found = fn(keyword_text, max_results=remaining, match_level=match_level)
+                        found = fn(keyword_text, max_results=max_results, match_level=match_level)
                         source_counts[source_key] = len(found)
                         raw_prospects.extend(found)
                     except Exception as e:
                         logger.warning(f"Source {source_key} failed for '{keyword_text}': {e}")
                         source_counts[source_key] = 0
                         continue
-                logger.info(f"'{keyword_text}' 소스별 수집: {source_counts}")
+
+                # 교차 병합: 같은 업체를 하나로, 빈 필드는 서로 보완
+                before = len(raw_prospects)
+                raw_prospects = merge_cross_source(raw_prospects)
+                # 정보가 풍부한 순으로 남긴다 (이메일 > 인스타 > 전화, 교차확인 가산)
+                raw_prospects.sort(key=lambda d: (
+                    bool(d.get("email")), bool(d.get("instagram")),
+                    bool(d.get("phone")), d.get("verified_count", 1),
+                ), reverse=True)
+                raw_prospects = raw_prospects[:max_results]
+                logger.info(
+                    f"'{keyword_text}' 소스별 수집: {source_counts} → 병합 {before}→{len(raw_prospects)}건")
                 for k, v in source_counts.items():
                     cumulative_source_counts[k] = cumulative_source_counts.get(k, 0) + v
                 import json as _json

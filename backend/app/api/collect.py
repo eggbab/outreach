@@ -113,7 +113,7 @@ def start_collection(
             detail="No keywords configured for this project. Add keywords first.",
         )
 
-    max_results = max(1, min(req.max_results, 100))
+    max_results = max(1, min(req.max_results, 200))
     match_level = req.match_level if req.match_level in ("loose", "medium", "strict") else "medium"
     VALID_SOURCES = {"kakao", "naver", "naver_shopping", "naver_map", "google"}
     sources = [s for s in (req.sources or []) if s in VALID_SOURCES] or None
