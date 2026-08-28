@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import api from '../lib/api'
 import {
   FolderOpen,
@@ -19,7 +19,9 @@ import {
 export default function DashboardPage() {
   const navigate = useNavigate()
   const [account, setAccount] = useState(null)  // 크레딧 잔액 + 서비스 키
-  const [keyInput, setKeyInput] = useState('')
+  // 가입링크(?key=)로 온 로그인 사용자는 키가 미리 채워진 상태로 시작
+  const [searchParams] = useSearchParams()
+  const [keyInput, setKeyInput] = useState(searchParams.get('key') || '')
   const [keyBusy, setKeyBusy] = useState(false)
   const [keyError, setKeyError] = useState('')
   const [stats, setStats] = useState({

@@ -742,6 +742,13 @@ function KeysTab() {
     setTimeout(() => setCopied(null), 2000)
   }
 
+  // 고객에게 보낼 가입 링크 — 열면 키가 미리 채워진 가입 화면이 뜬다.
+  const copySignupLink = (key) => {
+    navigator.clipboard.writeText(`${window.location.origin}/signup?key=${key}`)
+    setCopied(`link:${key}`)
+    setTimeout(() => setCopied(null), 2000)
+  }
+
   return (
     <>
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
@@ -827,9 +834,17 @@ function KeysTab() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <code className="text-xs bg-gray-100 px-2 py-1 rounded font-mono">{k.key.slice(0, 12)}...</code>
-                        <button onClick={() => copyKey(k.key)} className="text-gray-400 hover:text-blue-600 cursor-pointer">
+                        <button onClick={() => copyKey(k.key)} title="키만 복사" className="text-gray-400 hover:text-blue-600 cursor-pointer">
                           {copied === k.key ? <CheckCircle className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
                         </button>
+                        {!k.activated_by_email && (
+                          <button
+                            onClick={() => copySignupLink(k.key)}
+                            className="px-1.5 py-0.5 rounded text-[11px] font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 cursor-pointer whitespace-nowrap"
+                          >
+                            {copied === `link:${k.key}` ? '복사됨 ✓' : '가입링크'}
+                          </button>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-gray-600">{k.memo || '-'}</td>
