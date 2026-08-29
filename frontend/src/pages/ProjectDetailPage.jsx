@@ -135,9 +135,8 @@ function KeywordsTab({ projectId, showToast }) {
   const [matchLevel, setMatchLevel] = useState('medium')
   // 수집에 사용할 채널 — 기본은 전부 켬
   const ALL_SOURCES = [
-    { key: 'kakao', label: '카카오 지도', desc: '공식 API — 차단 위험 없음, 가장 안정적' },
+    { key: 'kakao', label: '카카오 지도 (선택)', desc: '공식 API — 관리자가 키를 등록한 경우에만 동작. 없어도 네이버 지도가 같은 역할' },
     { key: 'ftc', label: '정부 등록부 (통신판매)', desc: '공정위 신고 정보 — 이메일·전화가 정부 공개 데이터 (온라인 판매 업체)' },
-    { key: 'localgov', label: '지자체 인허가', desc: '전국 인허가 업소 — 오프라인 가게 전화번호 (음식점·카페 등)' },
     { key: 'naver', label: '네이버 검색', desc: '웹 검색 결과에서 홈페이지 방문해 수집' },
     { key: 'naver_shopping', label: '네이버 쇼핑', desc: '쇼핑몰 판매 업체' },
     { key: 'naver_map', label: '네이버 지도', desc: '지역 매장 — 전화번호에 강함' },

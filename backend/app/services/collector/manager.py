@@ -23,7 +23,9 @@ logger = logging.getLogger(__name__)
 COLLECTION_PIPELINE = [
     ("kakao", search_kakao),
     ("ftc", search_ftc),
-    ("localgov", search_localgov),
+    # localgov: localdata.go.kr가 2026-04-16 폐쇄되어 구주소가 죽음.
+    # data.go.kr 통합 API(행정안전부_식품_* 조회서비스)로 재작성 전까지 제외.
+    # ("localgov", search_localgov),
     ("naver", search_naver),
     ("naver_shopping", search_naver_shopping),
     ("naver_map", search_naver_map),
