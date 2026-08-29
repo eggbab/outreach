@@ -651,6 +651,28 @@ class ApiKey(Base):
 # Phase 6: Global Prospect Pool, Benchmarks, Keyword ROI
 # ──────────────────────────────────────────────
 
+class FtcBusiness(Base):
+    """공정위 통신판매사업자 등록부 로컬 미러.
+
+    정부 API가 상호 검색을 지원하지 않아(사업자번호 단건 + 전체 목록만),
+    주기적으로 통째로 받아두고 수집 시 여기서 LIKE 검색한다.
+    정상영업 + 연락처(이메일/전화/도메인) 보유 건만 저장한다.
+    """
+    __tablename__ = "ftc_businesses"
+
+    id = Column(Integer, primary_key=True)
+    brno = Column(String(12), unique=True, nullable=False, index=True)  # 사업자번호
+    name = Column(String(200), nullable=False, index=True)              # 상호
+    email = Column(String(255), nullable=True)
+    phone = Column(String(30), nullable=True)
+    website = Column(String(300), nullable=True)                        # 신고 도메인
+    address = Column(String(300), nullable=True)
+    region = Column(String(30), nullable=True, index=True)              # 시도명
+    product = Column(String(300), nullable=True)                        # 취급품목
+    declared_date = Column(String(8), nullable=True)                    # 신고일 YYYYMMDD
+    synced_at = Column(DateTime, default=utcnow, nullable=False)
+
+
 class GlobalProspect(Base):
     __tablename__ = "global_prospects"
 

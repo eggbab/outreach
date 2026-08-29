@@ -367,6 +367,20 @@ def process_scheduled_emails():
         db.close()
 
 
+def sync_ftc_registry_job():
+    """정부 등록부 미러 갱신 (최근 동기화됐으면 내부에서 생략)."""
+    from app.core.database import SessionLocal
+    from app.services.ftc_sync import sync_ftc_registry
+    db = SessionLocal()
+    try:
+        result = sync_ftc_registry(db)
+        logger.info(f"[scheduler] ftc_sync: {result}")
+    except Exception as e:
+        logger.error(f"[scheduler] ftc_sync 실패: {e}")
+    finally:
+        db.close()
+
+
 def start_scheduler():
     """Start the background scheduler."""
     scheduler.add_job(expire_trials, "cron", hour=0, minute=5, id="expire_trials", replace_existing=True)
@@ -379,6 +393,10 @@ def start_scheduler():
     scheduler.add_job(process_meeting_reminders, "interval", hours=1, id="meeting_reminders", replace_existing=True)
     scheduler.add_job(process_task_reminders, "interval", hours=1, id="task_reminders", replace_existing=True)
     scheduler.add_job(process_bounces, "interval", minutes=30, id="process_bounces", replace_existing=True)
+    # 정부 등록부(통신판매) 미러 — 주 1회 새벽 갱신 + 기동 직후 1회(비었으면 채움)
+    scheduler.add_job(sync_ftc_registry_job, "cron", day_of_week="sun", hour=19, minute=0,
+                      id="ftc_sync", replace_existing=True)  # UTC 19시 = KST 월요일 새벽 4시
+    scheduler.add_job(sync_ftc_registry_job, "date", id="ftc_sync_boot", replace_existing=True)
     scheduler.start()
     logger.info("Background scheduler started")
 
