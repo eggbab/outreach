@@ -19,7 +19,8 @@ import httpx
 logger = logging.getLogger(__name__)
 
 # 공정위 통신판매사업자 조회 (버전 갱신 시 여기만 수정)
-FTC_URL = "https://apis.data.go.kr/1130000/MllBs_1Service/getMllBsPrmsnMgtNoInfo_1"
+# 등록"상세" 서비스가 업체 목록(이메일·전화 포함)을 준다. (구버전 MllBs_1Service는 폐기됨 — 실호출로 확인)
+FTC_URL = "https://apis.data.go.kr/1130000/MllBsDtl_3Service/getMllBsInfoDetail_3"
 # 국세청 사업자 상태조회 (폐업 필터)
 NTS_URL = "https://api.odcloud.kr/api/nts-businessman/v1/status"
 
