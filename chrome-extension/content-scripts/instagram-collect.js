@@ -19,8 +19,6 @@
   const IG_APP_ID = '936619743392459';
   const TAG_API = 'https://www.instagram.com/api/v1/tags/web_info/?tag_name=';
   const PROFILE_API = 'https://www.instagram.com/api/v1/users/web_profile_info/?username=';
-  const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
-
   const DELAY_MIN = 4000;   // 프로필 조회 간 최소 지연(ms)
   const DELAY_MAX = 9000;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -52,18 +50,7 @@
     if (isBlocked(resp.status)) throw new Error('BLOCKED');
     if (!resp.ok) return [];
     const data = await resp.json().catch(() => ({}));
-    const sections = data?.data?.top?.sections || data?.data?.recent?.sections || [];
-    const usernames = new Set();
-    for (const sec of sections) {
-      const medias = sec?.layout_content?.medias || sec?.layout_content?.fill_items || [];
-      for (const m of medias) {
-        const u = m?.media?.user?.username;
-        if (u) usernames.add(u);
-        if (usernames.size >= limit) break;
-      }
-      if (usernames.size >= limit) break;
-    }
-    return [...usernames];
+    return InstaParse.parseTagAuthors(data, limit);
   }
 
   // 프로필에서 연락처 추출
@@ -73,22 +60,8 @@
     });
     if (isBlocked(resp.status)) throw new Error('BLOCKED');
     if (!resp.ok) return null;
-    const user = (await resp.json().catch(() => ({})))?.data?.user;
-    if (!user) return null;
-    const bio = user.biography || '';
-    const bioEmail = user.business_email || (bio.match(EMAIL_RE) || [])[0] || null;
-    const link = user.external_url
-      || user.bio_links?.[0]?.url
-      || null;
-    return {
-      name: user.full_name || username,
-      instagram: username,
-      instagram_pk: user.id ? String(user.id) : null,
-      email: bioEmail,
-      phone: user.business_phone_number || null,
-      website: link,
-      bio: bio.slice(0, 280) || null,
-    };
+    const data = await resp.json().catch(() => ({}));
+    return InstaParse.parseProfile(data, username);
   }
 
   async function post(apiBase, token, path, body) {

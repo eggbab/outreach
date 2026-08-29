@@ -31,6 +31,7 @@
       ],
       "js": [
         "content-scripts/instagram-dm.js",
+        "content-scripts/insta-parse.js",
         "content-scripts/instagram-collect.js"
       ],
       "run_at": "document_idle"
