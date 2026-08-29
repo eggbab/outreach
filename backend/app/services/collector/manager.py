@@ -12,6 +12,7 @@ from app.models.models import (
 from app.services.collector.ftc import search_ftc
 from app.services.collector.google import search_google
 from app.services.collector.kakao import search_kakao
+from app.services.collector.localgov import search_localgov
 from app.services.collector.naver import search_naver, search_naver_map, search_naver_shopping
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 COLLECTION_PIPELINE = [
     ("kakao", search_kakao),
     ("ftc", search_ftc),
+    ("localgov", search_localgov),
     ("naver", search_naver),
     ("naver_shopping", search_naver_shopping),
     ("naver_map", search_naver_map),

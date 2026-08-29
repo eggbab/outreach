@@ -137,6 +137,7 @@ function KeywordsTab({ projectId, showToast }) {
   const ALL_SOURCES = [
     { key: 'kakao', label: '카카오 지도', desc: '공식 API — 차단 위험 없음, 가장 안정적' },
     { key: 'ftc', label: '정부 등록부 (통신판매)', desc: '공정위 신고 정보 — 이메일·전화가 정부 공개 데이터 (온라인 판매 업체)' },
+    { key: 'localgov', label: '지자체 인허가', desc: '전국 인허가 업소 — 오프라인 가게 전화번호 (음식점·카페 등)' },
     { key: 'naver', label: '네이버 검색', desc: '웹 검색 결과에서 홈페이지 방문해 수집' },
     { key: 'naver_shopping', label: '네이버 쇼핑', desc: '쇼핑몰 판매 업체' },
     { key: 'naver_map', label: '네이버 지도', desc: '지역 매장 — 전화번호에 강함' },
@@ -468,7 +469,7 @@ function KeywordsTab({ projectId, showToast }) {
             <div className="mb-2 flex flex-wrap gap-1.5">
               {Object.entries(progress.source_stats).map(([k, v]) => (
                 <span key={k} className="text-xs px-2 py-0.5 rounded-full bg-white/70 border border-gray-200 text-gray-600">
-                  {({kakao:'카카오 지도',ftc:'정부 등록부',naver:'네이버 검색',naver_shopping:'네이버 쇼핑',naver_map:'네이버 지도',google:'구글'})[k] || k} {v}건
+                  {({kakao:'카카오 지도',ftc:'정부 등록부',localgov:'지자체 인허가',naver:'네이버 검색',naver_shopping:'네이버 쇼핑',naver_map:'네이버 지도',google:'구글'})[k] || k} {v}건
                 </span>
               ))}
             </div>
