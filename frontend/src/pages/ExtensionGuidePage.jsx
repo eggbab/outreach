@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Download, Chrome, Instagram, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { Download, Chrome, Instagram, CheckCircle2, AlertTriangle, Copy, ShieldCheck, HelpCircle } from 'lucide-react'
 
 /**
  * 크롬 확장 설치 가이드.
@@ -7,6 +7,13 @@ import { Download, Chrome, Instagram, CheckCircle2, AlertTriangle } from 'lucide
  */
 export default function ExtensionGuidePage() {
   const [downloading, setDownloading] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const copyAddr = () => {
+    navigator.clipboard.writeText('chrome://extensions')
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   const downloadExtension = async () => {
     setDownloading(true)
@@ -70,19 +77,75 @@ export default function ExtensionGuidePage() {
             {downloading ? '다운로드 중...' : '확장 다운로드 (.zip)'}
           </button>
           <p className="text-xs text-gray-500 mt-2">
-            맥: 다운로드 폴더에서 zip을 더블클릭해서 풀기 · 윈도우: 우클릭 → 압축 풀기
+            <b>압축을 꼭 풀어야 해요.</b> 맥: 받은 zip을 더블클릭 · 윈도우: 우클릭 → "압축 풀기".
+            풀면 <b>outreach-extension</b> 폴더가 생깁니다 — 이 폴더를 2단계에서 씁니다.
           </p>
         </Step>
 
-        <Step num="2" icon={Chrome} title="크롬에 확장 설치">
-          <ol className="text-sm text-gray-700 space-y-1.5 list-decimal list-inside">
-            <li>크롬 주소창에 <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">chrome://extensions</code> 입력 후 엔터</li>
-            <li>오른쪽 위 <strong>"개발자 모드"</strong> 토글을 켭니다</li>
-            <li>왼쪽 위 <strong>"압축 해제된 확장 프로그램 로드"</strong> 클릭</li>
-            <li>1단계에서 풀어둔 <strong>outreach-extension</strong> 폴더 선택</li>
-            <li>오른쪽 위 퍼즐 아이콘 → "Outreach DM" 옆 압정을 눌러 고정</li>
+        <Step num="2" icon={Chrome} title="크롬에 확장 설치 (한 번만)">
+          <ol className="text-sm text-gray-700 space-y-3 list-none">
+            <li>
+              <div className="flex items-start gap-2">
+                <span className="font-semibold text-gray-500">2-1.</span>
+                <div className="flex-1">
+                  크롬 주소창에 아래를 붙여넣고 엔터
+                  <div className="mt-1 flex items-center gap-2">
+                    <code className="bg-gray-100 px-2 py-1 rounded text-xs flex-1">chrome://extensions</code>
+                    <button onClick={copyAddr} className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100 cursor-pointer">
+                      {copied ? <><CheckCircle2 className="w-3.5 h-3.5 text-green-600" /> 복사됨</> : <><Copy className="w-3.5 h-3.5" /> 복사</>}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </li>
+            <li>
+              <span className="font-semibold text-gray-500">2-2.</span> 화면 <strong>오른쪽 위의 "개발자 모드"</strong> 스위치를 켭니다
+              <span className="block ml-8 text-xs text-gray-500">→ 켜면 아래에 파란 버튼 3개가 새로 나타나요</span>
+            </li>
+            <li>
+              <span className="font-semibold text-gray-500">2-3.</span> 방금 나타난 <strong>"압축 해제된 확장 프로그램을 로드합니다"</strong> 클릭
+            </li>
+            <li>
+              <span className="font-semibold text-gray-500">2-4.</span> 1단계에서 풀어둔 <strong>outreach-extension</strong> 폴더를 고르고 "선택"
+              <span className="block ml-8 text-xs text-gray-500">→ 목록에 "Outreach DM"이 나타나면 성공이에요</span>
+            </li>
+            <li>
+              <span className="font-semibold text-gray-500">2-5.</span> 주소창 오른쪽 <strong>퍼즐 조각 아이콘</strong> → "Outreach DM" 옆 <strong>압정(📌)</strong>을 눌러 항상 보이게 고정
+            </li>
           </ol>
         </Step>
+
+        {/* 안심 설명 — '개발자 모드'가 겁나지 않게 */}
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <ShieldCheck className="w-5 h-5 text-slate-500 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-slate-700">
+              <p className="font-semibold text-slate-900 mb-1">"개발자 모드"라고 나오는데 안전한가요?</p>
+              <p className="leading-relaxed">
+                네, 안전합니다. 크롬 웹스토어를 <b>일부러 거치지 않기 때문</b>입니다 —
+                스토어에 올리면 구글이 언제든 확장을 내려버릴 수 있어, 서비스가 갑자기
+                멈추는 걸 막으려고 <b>파일로 직접 드리는 방식</b>을 씁니다. "개발자 모드"는 그 방식에
+                필요한 스위치일 뿐, 위험한 설정이 아닙니다.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* 자주 겪는 문제 — 꺼짐 팝업 */}
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <HelpCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-amber-900">
+              <p className="font-semibold mb-1">크롬을 켤 때 "개발자 모드 확장 프로그램을 사용 중지하시겠습니까?" 창이 뜨면?</p>
+              <p className="leading-relaxed">
+                <b>"취소"</b>를 누르세요. 그러면 확장이 그대로 유지됩니다. 이 창은 크롬이 안전을 위해 가끔
+                묻는 것이라 문제가 아니며, "취소"만 누르면 계속 정상 작동합니다. (실수로 "사용 중지"를
+                눌렀다면 <code className="bg-amber-100 px-1 rounded text-xs">chrome://extensions</code>에서
+                "Outreach DM" 스위치를 다시 켜면 됩니다.)
+              </p>
+            </div>
+          </div>
+        </div>
 
         <Step num="3" icon={Instagram} title="인스타그램에 본인 계정으로 로그인">
           <p className="text-sm text-gray-700 mb-2">
