@@ -9,12 +9,47 @@
 여기서는 그 미러를 상호·주소·취급품목 LIKE로 검색한다.
 
 미러가 비어 있으면(키 미설정 또는 첫 동기화 전) 조용히 스킵.
+NTS_API_KEY가 있으면 검색 결과를 국세청 상태조회로 이중 확인해
+휴·폐업 업체를 걸러낸다 (등록부 데이터가 오래됐을 수 있으므로).
 """
 import logging
+import os
 
+import httpx
 from sqlalchemy import or_
 
 logger = logging.getLogger(__name__)
+
+NTS_URL = "https://api.odcloud.kr/api/nts-businessman/v1/status"
+
+
+def _filter_closed_via_nts(prospects: list[dict]) -> list[dict]:
+    """국세청 상태조회로 휴·폐업(코드 02/03) 제거. 키 없거나 실패 시 그대로 통과."""
+    api_key = os.getenv("NTS_API_KEY", "").strip()
+    nos = [p["biz_no"].replace("-", "") for p in prospects if p.get("biz_no")]
+    if not api_key or not nos:
+        return prospects
+    try:
+        closed: set[str] = set()
+        with httpx.Client(timeout=10) as client:
+            for i in range(0, len(nos), 100):   # API 한도 1회 100건
+                r = client.post(NTS_URL, params={"serviceKey": api_key},
+                                json={"b_no": nos[i:i + 100]})
+                if r.status_code != 200:
+                    logger.warning(f"[ftc/nts] HTTP {r.status_code} — 폐업 필터 생략")
+                    return prospects
+                for row in r.json().get("data", []):
+                    if row.get("b_stt_cd") in ("02", "03"):
+                        closed.add(row.get("b_no", ""))
+        if closed:
+            before = len(prospects)
+            prospects = [p for p in prospects
+                         if p.get("biz_no", "").replace("-", "") not in closed]
+            logger.info(f"[ftc/nts] 휴·폐업 {before - len(prospects)}건 제외")
+        return prospects
+    except Exception as e:
+        logger.warning(f"[ftc/nts] 상태조회 실패 (필터 생략): {e}")
+        return prospects
 
 
 def search_ftc(keyword: str, max_results: int = 20, match_level: str = "medium") -> list[dict]:
@@ -62,6 +97,7 @@ def search_ftc(keyword: str, max_results: int = 20, match_level: str = "medium")
                 "description": " · ".join(desc_bits) or None,
                 "biz_no": b.brno,
             })
+        prospects = _filter_closed_via_nts(prospects)
         logger.info(f"[ftc] '{keyword}' → 미러에서 {len(prospects)}건")
         return prospects
     except Exception as e:
