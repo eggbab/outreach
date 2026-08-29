@@ -23,6 +23,9 @@ INSTAGRAM_BLACKLIST = {
     # 플랫폼/서비스 공식 계정 — 업체 계정으로 오인 방지
     "catchtable_official", "naver_official", "instagram", "kakao_official",
     "baemin_official", "yogiyo_official", "coupang", "tablingofficial",
+    # 페이지에 흔히 박혀 있는 타 플랫폼 공식 계정 링크 — 업체 핸들이 아니다
+    "youtube", "facebook", "twitter", "tiktok", "naver", "kakao", "google",
+    "linkedin", "pinterest", "threads", "wadiz", "smartstore",
 }
 
 
@@ -112,6 +115,10 @@ def _filter_emails(raw_emails: set[str]) -> list[str]:
             continue
         # 이미지/파일 확장자로 끝나면 제외 (ooo@2x.png 같은 거)
         if re.search(r"\.(png|jpg|gif|svg|css|js)$", e):
+            continue
+        # 추적코드/해시가 이메일처럼 생긴 것 제외 (예: 8eb368c655b8...@sentry.io류)
+        local = e.split("@")[0]
+        if len(local) >= 20 and re.fullmatch(r"[0-9a-f.\-_]+", local):
             continue
         result.append(e)
     return result
