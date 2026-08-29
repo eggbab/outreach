@@ -673,6 +673,27 @@ class FtcBusiness(Base):
     synced_at = Column(DateTime, default=utcnow, nullable=False)
 
 
+class InstaCollectJob(Base):
+    """인스타그램 해시태그/키워드 수집 요청 — 크롬 확장이 폴링해 처리.
+
+    콜드 수집도 서버가 아닌 사용자 브라우저(본인 인스타 세션)에서 돌아야
+    차단 리스크가 DM과 동급으로 낮다. 서버는 '무엇을 찾을지'만 큐에 넣고,
+    확장이 결과를 돌려주면 일반 수집과 같은 병합·크레딧 경로로 저장한다.
+    """
+    __tablename__ = "insta_collect_jobs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    keyword = Column(String(200), nullable=False)         # 해시태그로 쓸 검색어
+    target_count = Column(Integer, default=20, nullable=False)
+    status = Column(String(20), default="pending", nullable=False)  # pending|running|completed|failed
+    found = Column(Integer, default=0, nullable=False)
+    message = Column(String(300), nullable=True)          # 확장이 보고하는 진행/오류
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+
 class GlobalProspect(Base):
     __tablename__ = "global_prospects"
 

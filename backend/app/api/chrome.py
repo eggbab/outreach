@@ -222,3 +222,116 @@ def report_dm_result(
     db.add(log)
     db.commit()
     return {"message": "DM result recorded", "status": effective_status}
+
+
+# ──────────────────────────────────────
+# 인스타그램 확장 수집 (콜드 수집을 사용자 브라우저에서)
+# ──────────────────────────────────────
+
+class InstaCollectTarget(BaseModel):
+    name: Optional[str] = None
+    instagram: str                       # 핸들 (필수)
+    instagram_pk: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    website: Optional[str] = None
+    bio: Optional[str] = None            # 프로필 소개 → description
+
+
+class InstaCollectResultRequest(BaseModel):
+    job_id: int
+    status: str = "running"              # running | completed | failed
+    message: Optional[str] = None
+    prospects: list[InstaCollectTarget] = []
+
+
+class InstaCollectQueueItem(BaseModel):
+    job_id: int
+    keyword: str
+    target_count: int
+
+
+def _owned_project_ids(db: Session, user_id: int) -> set[int]:
+    return {p.id for p in db.query(Project.id).filter(Project.user_id == user_id).all()}
+
+
+@router.get("/insta-collect-queue")
+def insta_collect_queue(
+    project_id: int = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """확장이 폴링 — 이 프로젝트에 대기 중인 인스타 수집 요청."""
+    from app.models.models import InstaCollectJob
+    proj = (
+        db.query(Project)
+        .filter(Project.id == project_id, Project.user_id == current_user.id)
+        .first()
+    )
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+    job = (
+        db.query(InstaCollectJob)
+        .filter(
+            InstaCollectJob.project_id == project_id,
+            InstaCollectJob.status.in_(("pending", "running")),
+        )
+        .order_by(InstaCollectJob.created_at.desc())
+        .first()
+    )
+    if not job:
+        return {"job": None}
+    if job.status == "pending":
+        job.status = "running"
+        db.commit()
+    return {"job": InstaCollectQueueItem(
+        job_id=job.id, keyword=job.keyword, target_count=job.target_count)}
+
+
+@router.post("/insta-collect-result", response_model=dict)
+def insta_collect_result(
+    req: InstaCollectResultRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """확장이 인스타에서 긁어온 업체를 저장 (일반 수집과 같은 병합·크레딧 경로)."""
+    from app.models.models import InstaCollectJob
+    from app.services.collector.extract import normalize_instagram
+
+    job = (
+        db.query(InstaCollectJob)
+        .filter(InstaCollectJob.id == req.job_id, InstaCollectJob.user_id == current_user.id)
+        .first()
+    )
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    saved = 0
+    if req.prospects:
+        raw = []
+        for t in req.prospects:
+            handle = normalize_instagram(t.instagram)
+            if not handle:
+                continue
+            raw.append({
+                "name": t.name or handle,
+                "email": t.email,
+                "phone": t.phone,
+                "instagram": handle,
+                "website": t.website,
+                "source": "instagram",
+                "category": job.keyword,
+                "description": (t.bio or None),
+            })
+        if raw:
+            from app.services.collector.manager import CollectionManager
+            mgr = CollectionManager(db)
+            saved = mgr._save_prospects(job.project_id, raw, current_user.id, keyword_id=None)
+
+    job.found = (job.found or 0) + saved
+    if req.status in ("completed", "failed"):
+        job.status = req.status
+    if req.message:
+        job.message = req.message[:300]
+    db.commit()
+    return {"message": "recorded", "saved": saved, "total_found": job.found}

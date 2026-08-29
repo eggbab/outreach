@@ -438,6 +438,28 @@ function KeywordsTab({ projectId, showToast }) {
         )}
       </div>
 
+      {/* 고객용: 수집 채널·한계 투명 안내 */}
+      <details className="bg-white rounded-xl border border-gray-200 p-5 group">
+        <summary className="text-sm font-semibold text-gray-900 cursor-pointer select-none flex items-center gap-2">
+          <span>ℹ️ 어디서 어떻게 정보를 가져오나요?</span>
+          <span className="text-xs font-normal text-gray-400 group-open:hidden">펼치기</span>
+        </summary>
+        <div className="mt-3 space-y-3 text-sm text-gray-600">
+          <div>
+            <p className="font-medium text-gray-800 mb-1">검색하는 채널</p>
+            <p>정부 등록부(공정위·국세청, 20만+ 업체) · 네이버(검색·쇼핑·지도) · 구글을 <b>모두 검색해 하나로 합칩니다</b>. 같은 업체는 중복 제거하고, 한쪽에 없는 정보(이메일↔전화)를 서로 채웁니다. 인스타 전용 업체는 아래 '인스타 수집'으로 보완합니다.</p>
+          </div>
+          <div>
+            <p className="font-medium text-gray-800 mb-1">가져올 수 있는 것</p>
+            <p>공개된 이메일·전화·인스타·홈페이지. 정부에 신고됐거나 웹에 공개된 정보만 모읍니다.</p>
+          </div>
+          <div>
+            <p className="font-medium text-gray-800 mb-1">못 가져오는 것 (솔직히)</p>
+            <p>개인 휴대폰 번호(법으로 보호), 공개된 적 없는 연락처, 로그인 벽 뒤·이미지 속 정보는 어떤 도구로도 못 가져옵니다. 이런 업체는 전화·인스타 DM으로 접근하는 게 맞습니다.</p>
+          </div>
+        </div>
+      </details>
+
       {/* Progress */}
       {progress && (
         <div className={`rounded-xl border p-6 ${
@@ -866,6 +888,10 @@ function DmTab({ projectId, showToast }) {
   const [loading, setLoading] = useState(true)
   const [extConnected, setExtConnected] = useState(false)
   const [igSettings, setIgSettings] = useState({ dm_template: null })
+  const [icKeyword, setIcKeyword] = useState('')
+  const [icCount, setIcCount] = useState(20)
+  const [icStatus, setIcStatus] = useState(null)   // 인스타 수집 상태
+  const [icBusy, setIcBusy] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -919,8 +945,85 @@ function DmTab({ projectId, showToast }) {
     </div>
   )
 
+  const startInstaCollect = async () => {
+    if (!icKeyword.trim()) return
+    setIcBusy(true)
+    try {
+      await api.post(`/projects/${projectId}/dm/insta-collect`, {
+        keyword: icKeyword.trim(), target_count: Number(icCount) || 20,
+      })
+      showToast('인스타 수집을 요청했습니다. 인스타그램 탭을 열어두면 확장이 처리합니다.')
+      setIcKeyword('')
+      pollInsta()
+    } catch (e) {
+      showToast(e.response?.data?.detail || '인스타 수집 요청 실패', 'error')
+    } finally { setIcBusy(false) }
+  }
+  const pollInsta = async () => {
+    try {
+      const r = await api.get(`/projects/${projectId}/dm/insta-collect/status`)
+      setIcStatus(r.data)
+      if (r.data.status === 'running' || r.data.status === 'pending') {
+        setTimeout(pollInsta, 5000)
+      }
+    } catch { /* noop */ }
+  }
+
   return (
     <div className="space-y-6">
+      {/* 인스타 콜드 수집 — 홈페이지 없는 인스타 전용 업체 보완 */}
+      <div className="bg-white rounded-xl border border-pink-200 p-6">
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <h3 className="font-semibold text-gray-900">인스타그램에서 업체 수집</h3>
+            <p className="text-sm text-gray-500 mt-0.5">
+              해시태그로 인스타 전용 업체(홈페이지 없는 가게)를 찾아 프로필의 이메일·연락처를 수집합니다.
+              본인 브라우저·본인 세션에서 사람 속도로 동작합니다.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex-1 min-w-[12rem]">
+            <label className="block text-xs font-medium text-gray-600 mb-1">해시태그 검색어</label>
+            <input
+              type="text" value={icKeyword} onChange={(e) => setIcKeyword(e.target.value)}
+              placeholder="예: 강남카페, 수제디저트"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            />
+          </div>
+          <div className="w-24">
+            <label className="block text-xs font-medium text-gray-600 mb-1">수집 수</label>
+            <input
+              type="number" min="1" max="50" value={icCount}
+              onChange={(e) => setIcCount(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm tabular-nums"
+            />
+          </div>
+          <button
+            onClick={startInstaCollect} disabled={icBusy || !extConnected || !icKeyword.trim()}
+            className="px-4 py-2 bg-pink-600 text-white text-sm font-medium rounded-lg hover:bg-pink-700 disabled:opacity-50 cursor-pointer"
+          >
+            {icBusy ? '요청 중...' : '인스타 수집 시작'}
+          </button>
+        </div>
+        {!extConnected && (
+          <p className="mt-2 text-xs text-amber-600">크롬 확장이 연결돼야 인스타 수집을 쓸 수 있습니다 (아래 1단계).</p>
+        )}
+        {icStatus && icStatus.status !== 'idle' && (
+          <div className="mt-3 text-sm rounded-lg bg-pink-50 border border-pink-100 px-3 py-2">
+            <b className="text-pink-700">
+              {({ pending: '대기 중 (인스타 탭을 열어두세요)', running: '수집 중…',
+                  completed: '수집 완료', failed: '중단됨' })[icStatus.status] || icStatus.status}
+            </b>
+            {typeof icStatus.found === 'number' && <span className="ml-2 text-gray-600">{icStatus.found}건 수집</span>}
+            {icStatus.message && <span className="ml-2 text-gray-500">— {icStatus.message}</span>}
+          </div>
+        )}
+        <p className="mt-3 text-xs text-gray-400">
+          ⚠️ 인스타 콜드 수집은 비공식 경로입니다. 읽기 위주라 DM보다 부담은 낮지만 리스크가 0은 아니므로 소량 권장합니다.
+        </p>
+      </div>
+
       {/* 한 눈에 보는 4단계 */}
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <div className="flex items-center justify-between mb-4">

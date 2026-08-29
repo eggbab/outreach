@@ -3,7 +3,11 @@
   "name": "Outreach - Instagram DM 자동화",
   "version": "1.0.0",
   "description": "웹 대시보드에서 관리하는 잠재고객에게 Instagram DM을 자동 발송합니다.",
-  "permissions": ["storage", "activeTab", "alarms"],
+  "permissions": [
+    "storage",
+    "activeTab",
+    "alarms"
+  ],
   "host_permissions": [
     "https://www.instagram.com/*",
     "http://localhost:8000/*",
@@ -22,8 +26,13 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.instagram.com/*"],
-      "js": ["content-scripts/instagram-dm.js"],
+      "matches": [
+        "https://www.instagram.com/*"
+      ],
+      "js": [
+        "content-scripts/instagram-dm.js",
+        "content-scripts/instagram-collect.js"
+      ],
       "run_at": "document_idle"
     }
   ],

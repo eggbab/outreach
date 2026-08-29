@@ -154,3 +154,73 @@ def get_dm_log(
         )
         for log, prospect in logs
     ]
+
+
+# ──────────────────────────────────────
+# 인스타그램 확장 수집 요청 (프로젝트 화면 → 확장이 처리)
+# ──────────────────────────────────────
+
+class InstaCollectStartRequest(BaseModel):
+    keyword: str
+    target_count: int = 20
+
+
+@router.post("/insta-collect")
+def start_insta_collect(
+    project_id: int,
+    req: InstaCollectStartRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """인스타 수집 요청을 큐에 등록. 크롬 확장이 폴링해 사용자 브라우저에서 수행."""
+    from app.models.models import InstaCollectJob
+    _verify_project(project_id, current_user.id, db)
+
+    keyword = (req.keyword or "").strip().lstrip("#")
+    if not keyword:
+        raise HTTPException(status_code=400, detail="검색어(해시태그)를 입력하세요")
+
+    # 이미 대기/진행 중인 게 있으면 재사용 (중복 큐 방지)
+    existing = (
+        db.query(InstaCollectJob)
+        .filter(
+            InstaCollectJob.project_id == project_id,
+            InstaCollectJob.status.in_(("pending", "running")),
+        )
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=400, detail="이미 진행 중인 인스타 수집이 있습니다")
+
+    job = InstaCollectJob(
+        project_id=project_id, user_id=current_user.id,
+        keyword=keyword, target_count=max(1, min(req.target_count, 50)),
+        status="pending",
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return {"job_id": job.id, "keyword": keyword, "status": "pending"}
+
+
+@router.get("/insta-collect/status")
+def insta_collect_status(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """최근 인스타 수집 요청 상태."""
+    from app.models.models import InstaCollectJob
+    _verify_project(project_id, current_user.id, db)
+    job = (
+        db.query(InstaCollectJob)
+        .filter(InstaCollectJob.project_id == project_id)
+        .order_by(InstaCollectJob.created_at.desc())
+        .first()
+    )
+    if not job:
+        return {"status": "idle"}
+    return {
+        "status": job.status, "keyword": job.keyword,
+        "found": job.found, "target": job.target_count, "message": job.message,
+    }
